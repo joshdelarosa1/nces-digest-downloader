@@ -5,48 +5,205 @@
 #   Downloads Excel files from NCES Digest URLs with optimized parallel processing
 #   and comprehensive error handling. Manages both .xls and .xlsx formats with
 #   integrity verification.
-#
-# Version: 1.0.0
 # -----------------------------------------------------------------------------
 
 # ---- Setup ----
 suppressPackageStartupMessages({
-  library(httr)      # For HTTP requests
-  library(dplyr)     # For data manipulation
-  library(purrr)     # For functional programming
-  library(stringr)   # For string handling
-  library(furrr)     # For parallel processing
-  library(digest)    # For file hashing
-  library(glue)      # For string interpolation
-  library(tibble)    # For tibble objects
-  library(fs)        # For file system operations
+  library(httr)
+  library(dplyr)
+  library(purrr)
+  library(stringr)
+  library(furrr)
+  library(digest)
+  library(glue)
+  library(tibble)
+  library(fs)
 })
 
-# Validate input
 if (!exists("excel_links_df")) {
   stop("The variable 'excel_links_df' does not exist. Run find_excel_path.R first.")
 }
 
-# Setup output and log directories with path handling that works on any OS
 base_output_dir <- file.path(config$output_dir)
 ensure_dir(base_output_dir)
 
 base_log_dir <- file.path(config$log_dir)
 ensure_dir(base_log_dir)
 
-# Create a timestamp for log file naming
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
 log_file_path <- file.path(base_log_dir, glue("download_log_{timestamp}.csv"))
 hash_registry_path <- file.path(base_log_dir, "hash_registry.csv")
 
-# Initialize file counter for progress tracking
 total_files <- nrow(excel_links_df)
-current_file <- 0
 success_count <- 0
 fail_count <- 0
 skip_count <- 0
 
-# ---- XML Properties Extraction Function ----
+throttle_config <- list(
+  min_delay = 3,
+  current_delay = 3,
+  max_delay = 30,
+  last_request_time = Sys.time() - as.difftime(100, units = "secs"),
+  consecutive_failures = 0,
+  failure_threshold = 3,
+  backoff_factor = 1.5
+)
+
+apply_throttling <- function() {
+  time_since_last <- as.numeric(difftime(Sys.time(), throttle_config$last_request_time, units = "secs"))
+  if (time_since_last < throttle_config$current_delay) {
+    Sys.sleep(throttle_config$current_delay - time_since_last)
+  }
+  throttle_config$last_request_time <- Sys.time()
+}
+
+adjust_throttling <- function(success) {
+  if (success) {
+    throttle_config$consecutive_failures <- 0
+    throttle_config$current_delay <- max(throttle_config$min_delay, throttle_config$current_delay / sqrt(throttle_config$backoff_factor))
+  } else {
+    throttle_config$consecutive_failures <- throttle_config$consecutive_failures + 1
+    if (throttle_config$consecutive_failures >= throttle_config$failure_threshold) {
+      throttle_config$current_delay <- min(throttle_config$current_delay * throttle_config$backoff_factor, throttle_config$max_delay)
+    }
+  }
+}
+
+# Complete implementation of download_excel_file function
+download_excel_file <- function(url, dest_path, min_size = 100, max_retries = 5, overwrite = FALSE, verify_extension = TRUE) {
+  # Check if file already exists and handle according to overwrite parameter
+  if (file.exists(dest_path) && !overwrite) {
+    hash <- calculate_file_hash(dest_path)
+    
+    # Register the hash if not already in registry
+    registry_result <- check_hash_registry(dest_path, hash)
+    if (!is.list(registry_result) || !registry_result$exists) {
+      register_file_hash(dest_path, hash)
+    }
+    
+    return(list(
+      success = TRUE,
+      file_path = dest_path,
+      hash = hash,
+      status = "downloaded"
+    ))
+  }
+  
+  # Ensure destination directory exists
+  ensure_dir(dirname(dest_path))
+  
+  # Verify URL has expected format for Excel file
+  if (verify_extension && !grepl("\\.(xls|xlsx)($|\\?)", url, ignore.case = TRUE)) {
+    warning(glue::glue("URL does not appear to be an Excel file: {url}"))
+  }
+  
+  # Set up temporary file for download
+  temp_file <- tempfile(fileext = ".tmp")
+  on.exit(if (file.exists(temp_file)) file.remove(temp_file), add = TRUE)
+  
+  # Track the current retry delay for exponential backoff
+  current_delay <- 1
+  
+  # Attempt download with retries and exponential backoff
+  for (attempt in seq_len(max_retries)) {
+    tryCatch({
+      if (attempt > 1) {
+        message(glue::glue("Retry attempt {attempt}/{max_retries} for {basename(url)}"))
+        # Add jitter to the delay to prevent thundering herd
+        jitter <- runif(1, min = -0.1, max = 0.1) * current_delay
+        actual_delay <- max(0.5, current_delay + jitter)
+        message(glue::glue("Waiting {round(actual_delay, 1)} seconds before retry..."))
+        Sys.sleep(actual_delay)
+        # Increase delay for next attempt (exponential backoff)
+        current_delay <- min(current_delay * 2, 30)  # Cap at 30 seconds
+      }
+      
+      # Enhanced browser-like headers
+      headers <- c(
+        "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept" = "application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*",
+        "Accept-Language" = "en-US,en;q=0.5",
+        "Connection" = "keep-alive"
+      )
+      
+      # Use httr for more control over the download process
+      response <- httr::GET(
+        url,
+        httr::write_disk(temp_file, overwrite = TRUE),
+        httr::timeout(60),
+        httr::add_headers(.headers = headers)
+      )
+      
+      # Check if request was successful
+      status_code <- httr::status_code(response)
+      if (status_code != 200) {
+        # Special handling for 404 Not Found - no point retrying these
+        if (status_code == 404) {
+          message(glue::glue("File not found (404): {basename(url)}"))
+          return(list(
+            success = FALSE,
+            file_path = NA_character_,
+            hash = NA_character_,
+            error = "File not found (404 Not Found)",
+            status = "failed"
+          ))
+        } else {
+          stop(paste("HTTP error:", status_code))
+        }
+      }
+      
+      # Verify download
+      if (!file.exists(temp_file)) {
+        stop("Download failed: File not created")
+      }
+      
+      # Check file size
+      file_size <- file.info(temp_file)$size
+      if (file_size < min_size) {
+        stop(glue::glue("Downloaded file too small: {file_size} bytes"))
+      }
+      
+      # Move file to destination
+      file.copy(temp_file, dest_path, overwrite = TRUE)
+      
+      # Calculate hash
+      hash <- calculate_file_hash(dest_path)
+      
+      # Register the hash
+      register_file_hash(dest_path, hash)
+      
+      return(list(
+        success = TRUE,
+        file_path = dest_path,
+        hash = hash,
+        status = "downloaded"
+      ))
+    }, error = function(e) {
+      if (attempt == max_retries) {
+        return(list(
+          success = FALSE,
+          file_path = NA_character_,
+          hash = NA_character_,
+          error = e$message,
+          status = "failed"
+        ))
+      }
+      
+      # Log error but continue to next retry
+      message(glue::glue("Attempt {attempt}/{max_retries} failed: {e$message}"))
+    })
+  }
+  
+  # This should never be reached due to the return() in the error handler
+  return(list(
+    success = FALSE,
+    file_path = NA_character_,
+    hash = NA_character_,
+    error = "Unexpected error in download_excel_file()",
+    status = "failed"
+  ))
+}
+
 extract_xml_properties <- function(file_path) {
   ext <- tolower(fs::path_ext(file_path))
   
@@ -113,7 +270,7 @@ extract_xml_properties <- function(file_path) {
     ))
   }, error = function(e) {
     if (config$verbose) {
-      message(glue("Error extracting XML properties from {file_path}: {e$message}"))
+      message(glue::glue("Error extracting XML properties from {file_path}: {e$message}"))
     }
     return(list(
       creator = NA_character_,
@@ -125,248 +282,134 @@ extract_xml_properties <- function(file_path) {
   })
 }
 
-# ---- Excel Metadata Extraction Function ----
-extract_excel_metadata <- function(file_path, download_source_url, table_title) {
-  # Get file information
-  file_info <- fs::file_info(file_path)
-  file_size <- file_info$size
-  creation_date <- if (!is.na(file_info$birth_time)) {
-    file_info$birth_time
-  } else {
-    file_info$modification_time
-  }
-  modification_date <- file_info$modification_time
-  
-  # Extract XML properties from xlsx if applicable
-  xml_props <- extract_xml_properties(file_path)
-  
-  # Use provided title if available, otherwise use document title
-  final_title <- if (!is.na(table_title) && nzchar(table_title)) {
-    table_title
-  } else {
-    xml_props$title
-  }
-  
-  # Calculate hash using the utility function
-  checksum <- calculate_file_hash(file_path, algo = "sha256")
-  
-  # Try to get sheet count, defaulting to NA on error
-  sheet_count <- tryCatch({
-    if (tolower(fs::path_ext(file_path)) == "xlsx") {
-      length(readxl::excel_sheets(file_path))
-    } else {
-      NA_integer_
-    }
-  }, error = function(e) {
-    NA_integer_
-  })
-  
-  # Create timestamp for extraction
-  current_time <- Sys.time()
-  
-  # Return a tibble with extracted metadata
-  tibble::tibble(
-    file_path = file_path,
-    file_size = file_size,
-    creation_date = creation_date,
-    modification_date = modification_date,
-    doc_created = xml_props$created,
-    doc_modified = xml_props$modified,
-    checksum = checksum,
-    title = final_title,
-    author = xml_props$creator,
-    last_modified_by = xml_props$last_modified_by,
-    number_of_sheets = sheet_count,
-    download_source_url = download_source_url,
-    download_timestamp = current_time,  # Use the same timestamp for consistency
-    processing_status = "success",
-    extraction_timestamp = current_time, # Use the same timestamp for consistency
-    download_duration = 0  # Set a default value
-  )
-}
-
-# ---- Enhanced Download Function ----
-download_excel_file_with_reporting <- function(row_index, row, 
-                                               overwrite = FALSE, 
-                                               min_file_size = 100) {
-  # Extract data from row
+# Simplified version of the function
+download_excel_file_with_reporting <- function(row_index, row, overwrite = FALSE, min_file_size = 100) {
+  # Extract basic information
   year <- row$year
   table_number <- row$table_number
   excel_url <- row$excel_url
   table_title <- row$table_title
   
-  # Format table number for filename
+  # Set up paths
   clean_table_number <- stringr::str_replace_all(table_number, "\\.", "_")
-  
-  # Determine chapter and subchapter from table number
   subchapter <- stringr::str_extract(table_number, "^[0-9]{3}")
   chapter_folder <- substr(subchapter, 1, 1)
-  
-  # Determine file extension from URL
   ext <- tolower(fs::path_ext(excel_url))
-  if (!(ext %in% c("xls", "xlsx"))) {
-    # If extension can't be determined, default to xlsx
-    ext <- "xlsx"
-  }
-  
-  # Construct filename
-  file_name <- glue("{year}_tabn{clean_table_number}.{ext}")
-  
-  # Construct directory path using file.path for cross-platform compatibility
-  sub_dir <- file.path(
-    base_output_dir, 
-    year,
-    paste0("chapter_", chapter_folder),
-    paste0("subchapter_", subchapter)
-  )
-  
-  # Create full file path
+  if (!(ext %in% c("xls", "xlsx"))) ext <- "xlsx"
+  file_name <- glue::glue("{year}_tabn{clean_table_number}.{ext}")
+  sub_dir <- file.path(base_output_dir, year, paste0("chapter_", chapter_folder), paste0("subchapter_", subchapter))
   file_path <- file.path(sub_dir, file_name)
   
-  # Create timestamp for download
-  download_time <- Sys.time()
-  
-  # Initialize log entry with basic information
-  log_entry <- tibble::tibble(
+  # Initialize log entry
+  log_entry <- list(
     year = year,
     table_number = table_number,
     excel_url = excel_url,
     file_path = file_path,
     table_title = table_title,
     download_source_url = excel_url,
-    download_timestamp = download_time,
-    processing_status = NA_character_,
+    download_timestamp = Sys.time(),
+    processing_status = "pending",
     error_message = NA_character_,
     row_index = row_index,
     attempt_count = 1,
-    download_duration = 0  # Default value
+    download_duration = 0
   )
   
-  # Check for missing URL
+  # Handle missing URL
   if (is.na(excel_url) || excel_url == "") {
-    return(log_entry %>% 
-             dplyr::mutate(
-               processing_status = "failed", 
-               error_message = "Missing or empty URL"
-             ))
+    log_entry$processing_status <- "failed"
+    log_entry$error_message <- "Missing or empty URL"
+    return(as_tibble(log_entry))
   }
   
-  # Ensure directory exists
+  # Ensure directory exists and apply throttling
   ensure_dir(sub_dir)
+  apply_throttling()
   
-  # Use the enhanced download function from utils.R
-  result <- download_excel_file(
-    url = excel_url,
-    dest_path = file_path,
-    min_size = min_file_size,
-    max_retries = 4,
-    overwrite = overwrite,
-    verify_extension = TRUE
-  )
+  # Perform download
+  download_start <- Sys.time()
+  result <- download_excel_file(excel_url, file_path, min_size = min_file_size, overwrite = overwrite)
+  download_end <- Sys.time()
+  download_duration <- as.numeric(difftime(download_end, download_start, units = "secs"))
   
-  # Create timestamp for completion
-  completion_time <- Sys.time()
-  
-  # Calculate duration in seconds
-  duration_secs <- as.numeric(difftime(completion_time, download_time, units = "secs"))
-  
-  # Process download result
+  # Update log entry based on result
   if (result$success) {
+    log_entry$checksum <- result$hash
+    log_entry$download_duration <- download_duration
+    
     if (result$status == "downloaded") {
-      # File was downloaded successfully, extract metadata
+      log_entry$processing_status <- "success"
+      
+      # Try to extract metadata
       tryCatch({
-        excel_meta <- extract_excel_metadata(file_path, excel_url, table_title)
+        # Basic file info
+        file_info <- fs::file_info(file_path)
+        log_entry$file_size <- file_info$size
+        log_entry$creation_date <- if (!is.na(file_info$birth_time)) file_info$birth_time else file_info$modification_time
+        log_entry$modification_date <- file_info$modification_time
         
-        # Combine log entry with metadata, using base R for safety
-        cols_to_keep <- setdiff(names(log_entry), c("processing_status", "error_message", "download_duration"))
-        log_entry_subset <- log_entry[, cols_to_keep]
+        # Excel metadata
+        xml_props <- extract_xml_properties(file_path)
+        log_entry$doc_created <- xml_props$created
+        log_entry$doc_modified <- xml_props$modified
+        log_entry$author <- xml_props$creator
+        log_entry$last_modified_by <- xml_props$last_modified_by
         
-        # Add download_duration to excel_meta
-        excel_meta$download_duration <- duration_secs
-        
-        # Combine the dataframes
-        log_entry <- dplyr::bind_cols(log_entry_subset, excel_meta[, setdiff(names(excel_meta), names(log_entry_subset))])
+        # Try to get sheet count
+        log_entry$number_of_sheets <- tryCatch({
+          if (tolower(fs::path_ext(file_path)) == "xlsx") {
+            length(readxl::excel_sheets(file_path))
+          } else {
+            NA_integer_
+          }
+        }, error = function(e) { NA_integer_ })
         
       }, error = function(e) {
-        # If metadata extraction fails, still mark as success but note the error
-        log_entry$processing_status <- "partial_success"
-        log_entry$error_message <- paste0("Downloaded but metadata extraction failed: ", e$message)
-        log_entry$checksum <- result$hash
-        log_entry$download_duration <- duration_secs
+        # If metadata extraction fails, still keep success status
+        log_entry$error_message <- paste("Metadata extraction failed:", e$message)
       })
+      
     } else {
-      # File was skipped (already exists)
       log_entry$processing_status <- "skipped"
       log_entry$error_message <- "File already exists"
-      log_entry$checksum <- result$hash
-      log_entry$download_duration <- 0
     }
   } else {
-    # Download failed
     log_entry$processing_status <- "failed"
     log_entry$error_message <- result$error
-    log_entry$download_duration <- duration_secs
+    log_entry$download_duration <- download_duration
+    adjust_throttling(FALSE)
   }
   
-  return(log_entry)
+  # Print debugging info
+  message(paste("Final status for", basename(file_path), ":", log_entry$processing_status))
+  
+  return(as_tibble(log_entry))
 }
 
-# ---- Function to create and update a simple progress bar ----
-update_progress <- function(completed, total) {
-  width <- 50  # Width of progress bar
-  percentage <- completed / total
-  filled <- round(width * percentage)
-  bar <- paste0(
-    "[", 
-    paste(rep("=", filled), collapse = ""),
-    paste(rep(" ", width - filled), collapse = ""),
-    "] ",
-    sprintf("%3d%%", round(percentage * 100)),
-    " | ", completed, "/", total
-  )
-  cat("\r", bar)
-  if (completed == total) cat("\n")
-  utils::flush.console()
-}
-
-# ---- Prepare for Parallel Processing ----
-# Make sure we have a valid number of workers
-worker_count <- if (is.null(config$max_parallel) || !is.numeric(config$max_parallel) || config$max_parallel < 1) {
-  message("Invalid worker count. Using 2 workers as a fallback.")
-  2  # Fallback to 2 workers
-} else {
-  as.integer(config$max_parallel)
-}
-
-# Message about download
-message(glue("Downloading {nrow(excel_links_df)} Excel files with {worker_count} parallel workers..."))
-
-# Process files sequentially for safety
-message("Using sequential processing for greater reliability")
-
-# Process files sequentially
+# --- Execution Loop ---
 download_logs <- vector("list", total_files)
-
 for (i in seq_len(total_files)) {
   row <- excel_links_df[i, ]
-  download_logs[[i]] <- download_excel_file_with_reporting(i, row, overwrite = FALSE)
-  message(glue("Downloaded {i}/{total_files}: {row$year} table {row$table_number}"))
+  result <- download_excel_file_with_reporting(i, row, overwrite = FALSE)
+  download_logs[[i]] <- result
+  
+  # Show appropriate status in the message
+  status <- result$processing_status
+  message(glue("Downloaded {i}/{total_files}: {row$year} table {row$table_number} => {status}"))
 }
 
-# Combine results and add overall statistics
-log_df <- dplyr::bind_rows(download_logs)
+log_df <- bind_rows(download_logs)
 
-# Update counters for the summary
-success_count <- sum(log_df$processing_status %in% c("success", "partial_success"))
-fail_count <- sum(log_df$processing_status == "failed")
-skip_count <- sum(log_df$processing_status == "skipped")
+# Debug: Show all the processing statuses
+message("Status counts in log:")
+print(table(log_df$processing_status))
 
-# Write download log to CSV
+success_count <- sum(log_df$processing_status %in% c("success", "partial_success"), na.rm = TRUE)
+fail_count <- sum(log_df$processing_status == "failed", na.rm = TRUE)
+skip_count <- sum(log_df$processing_status == "skipped", na.rm = TRUE)
+
 readr::write_csv(log_df, log_file_path)
 message(glue("✅ Download log saved to: {log_file_path}"))
-
-# Summary message
 message(glue("Download Summary: {success_count} success, {fail_count} failed, {skip_count} skipped."))
-
-# Return log dataframe for pipeline
 download_log <- log_df

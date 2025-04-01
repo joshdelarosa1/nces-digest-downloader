@@ -1,14 +1,26 @@
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
 # File: install_dependencies.R
-# Description: Helper script to install all required packages for the
-#              NCES Digest downloader. Designed to be run standalone
-#              by novice users who need to set up their environment.
+# -----------------------------------------------------------------------------
+# Purpose: Helper script to install all required packages for the
+#          NCES Digest downloader. Designed to be run standalone
+#          by novice users who need to set up their environment.
+#
+# Version: 1.0.1
+# Last Update: 2025-04-01
+# Author: Josue De La Rosa
+#
+# Change Log:
+# 2025-04-01: v1.0.1 - Added curl package as a required dependency for improved
+#                       session-based downloads and HTTP handling
+# 2023-03-15: v1.0.0 - Initial release
 #
 # Usage: Rscript install_dependencies.R
 #
-# Version: 1.0.0
-# -----------------------------------------------------------------------------
+# Description:
+# This script checks for and installs all the required R packages needed
+# to run the NCES Digest data downloader. It provides user-friendly prompts
+# and detailed status messages throughout the installation process.
 
 cat("\n")
 cat("┌─────────────────────────────────────────────────┐\n")
@@ -27,21 +39,26 @@ msg <- function(text, type = "info") {
   cat(paste0(prefix, text, "\n"))
 }
 
-# List of all required packages
+# Update the required_packages list in install_dependencies.R
+# by adding the curl package:
+
 required_packages <- c(
   # Core packages
   "dplyr", "purrr", "stringr", "tibble", "rvest", "xml2", "httr",
   "glue", "yaml", "digest",
-
+  
   # File operations
   "fs", "readr",
-
+  
   # Excel handling
   "readxl", "openxlsx",
-
+  
   # Parallel processing
   "furrr", "future", "progressr",
-
+  
+  # New required dependency for session-based downloads
+  "curl",
+  
   # Optional but recommended
   "here", "knitr"
 )

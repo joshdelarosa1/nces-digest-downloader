@@ -1,13 +1,22 @@
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
 # File: URL_DIGEST.R
-# Description:
-#   Enhanced web scraping of NCES Digest table metadata with improved error
-#   handling and parallelism. This script identifies available tables for each
-#   digest year and extracts key metadata.
-#
-# Version: 1.0.0
 # -----------------------------------------------------------------------------
+# Purpose: Enhanced web scraping of NCES Digest table metadata with improved error
+#          handling and parallelism. This script identifies available tables for each
+#          digest year and extracts key metadata.
+#
+# Version: 1.0.1
+# Last Update: 2025-04-01
+# Author: Josue De La Rosa
+#
+# Change Log:
+# 2025-04-01: v1.0.1 - Added seed consistency for parallel processing to ensure
+#                       reproducible results and prevent potential errors from
+#                       the furrr package's worker processes
+# 2023-03-15: v1.0.0 - Initial release
+#
+# Usage: This script is called from main.R and should not be run directly.
 
 # ---- Load Libraries ----
 suppressPackageStartupMessages({
@@ -174,7 +183,7 @@ enhance_with_page_titles <- function(tables_df, batch_size = 10) {
           return(row)
         })
       }
-    )
+      ,.options = furrr::furrr_options(seed = TRUE))
     
     # Update progress
     processed <<- processed + nrow(batch)
@@ -196,7 +205,7 @@ message("Scraping digest tables...")
 all_tables_raw <- furrr::future_map_dfr(
   config$years,
   extract_digest_tables
-)
+  ,.options = furrr::furrr_options(seed = TRUE))
 
 # Enhance table data with proper page titles in controlled batches
 message("Enhancing tables with page titles...")

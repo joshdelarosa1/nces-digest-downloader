@@ -2,8 +2,33 @@
 # =============================================================================
 # NCES Digest Data Downloader
 # =============================================================================
-# This script downloads Excel files from the NCES Digest of Education Statistics.
-# Edit the configuration values below to customize your download.
+# Purpose: Downloads Excel files from the NCES Digest of Education Statistics
+#          with customizable filtering and parallel processing capabilities.
+#
+# Version: 1.0.1
+# Last Update: 2025-04-01
+# Author: Josue De La Rosa
+#
+#!/usr/bin/env Rscript
+# -----------------------------------------------------------------------------
+# File: find_excel_path.R
+# -----------------------------------------------------------------------------
+# Purpose: Enhanced extraction of Excel download links with improved parallelism
+#          and error handling. This script applies filtering based on user 
+#          configuration and extracts download links from table pages.
+#
+# Version: 1.0.1
+# Last Update: 2025-04-01
+# Author: Josue De La Rosa
+#
+# Change Log:
+# 2025-04-01: v1.0.1 - Added validation for invalid or missing URLs
+#                     - Implemented direct URL construction as fallback
+#                     - Enhanced batch processing with better error handling
+#                     - Added seed consistency for parallel processing
+# 2023-03-15: v1.0.0 - Initial release
+#
+# Usage: This script is called from main.R and should not be run directly.
 #
 # Usage (from command line):
 #   Rscript main.R [options]
@@ -32,6 +57,7 @@ YEARS_TO_DOWNLOAD <- c(24)
 # "year_only"  - Only tables from specified years (default)
 # "table_only" - Only specified tables (regardless of year)
 # "custom"     - Both year and table filters applied
+# DOWNLOAD_MODE <- "custom"
 DOWNLOAD_MODE <- "year_only"
 
 # When DOWNLOAD_MODE is "year_only" or "custom", specify years with "d" prefix
@@ -40,7 +66,9 @@ FILTER_YEARS <- paste0("d", YEARS_TO_DOWNLOAD)
 
 # When DOWNLOAD_MODE is "table_only" or "custom", specify table numbers
 # e.g., c("101.10", "204.30") for specific tables
+
 FILTER_TABLES <- c()
+# FILTER_TABLES <- c("302.43","311.22","311.32")
 
 # Maximum number of simultaneous downloads (0 = auto-detect based on system)
 MAX_PARALLEL_DOWNLOADS <- 0
@@ -332,7 +360,7 @@ main <- function() {
   msg(paste0("Using ", config$max_parallel, " parallel processes for downloads"), "info")
   
   # Set up parallel backend
-  future::plan(future::multisession, workers = config$max_parallel)
+  future::plan(future::multisession, workers = config$max_parallel, .options = furrr::furrr_options(seed = TRUE))
   
   # Step 1: Scrape the digest menu to find tables
   msg("Step 1/3: Scraping digest menus for available tables...", "progress")
@@ -357,8 +385,10 @@ main <- function() {
   if (!file.exists(download_files_path)) {
     stop("Could not find download_files.R script.")
   }
-  source(download_files_path)  # This creates download_log
+  # Minimal change: source download_files.R in the global environment
+  source(download_files_path, local = .GlobalEnv)  # This creates download_log and required functions
   
+  # PATCHED CODE BELOW - Fixed download counter
   # Calculate and display summary statistics
   end_time <- Sys.time()
   duration <- difftime(end_time, start_time, units = "mins")
@@ -369,18 +399,23 @@ main <- function() {
   
   # Extract counts from download_log
   if (exists("download_log")) {
-    success_count <- sum(download_log$processing_status %in% c("success", "partial_success"))
-    fail_count <- sum(download_log$processing_status == "failed")
-    skip_count <- sum(download_log$processing_status == "skipped")
+    # Fix: Count only files that were actually downloaded in this session
+    success_count <- sum(download_log$processing_status == "success", na.rm = TRUE)
+    
+    # These counts remain unchanged
+    fail_count <- sum(download_log$processing_status == "failed", na.rm = TRUE)
+    skip_count <- sum(download_log$processing_status == "skipped", na.rm = TRUE)
     
     msg(paste0("Downloaded files: ", success_count, " successful, ", 
                fail_count, " failed, ", skip_count, " skipped"), "info")
     
     # Show file sizes if available
     if ("file_size" %in% names(download_log)) {
-      total_size_mb <- sum(download_log$file_size[download_log$processing_status %in% 
-                                                    c("success", "partial_success")], 
+      # Only sum sizes for newly downloaded files
+      # Simplified total file size calculation
+      total_size_mb <- sum(download_log$file_size[download_log$processing_status == "success"], 
                            na.rm = TRUE) / (1024 * 1024)
+      
       msg(paste0("Total data downloaded: ", round(total_size_mb, 2), " MB"), "info")
     }
   }
@@ -393,7 +428,7 @@ main <- function() {
     cat("  1. In the Files panel, navigate to the 'output' folder\n")
     cat("  2. Click on any Excel file to open it\n\n")
   }
-}
+} # This closing bracket ends the main() function
 
 # Run the main function
 tryCatch({

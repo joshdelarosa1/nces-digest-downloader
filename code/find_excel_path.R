@@ -1,13 +1,26 @@
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
 # File: find_excel_path.R
-# Description:
-#   Enhanced extraction of Excel download links with improved parallelism
-#   and error handling. This script applies filtering based on user 
-#   configuration and extracts download links from table pages.
-#
-# Version: 1.0.0
 # -----------------------------------------------------------------------------
+# Purpose: Enhanced extraction of Excel download links with improved parallelism
+#          and error handling. This script applies filtering based on user 
+#          configuration and extracts download links from table pages.
+#
+# Version: 1.0.1
+# Last Update: 2025-04-01
+# Author: Josue De La Rosa
+#
+# Change Log:
+# 2025-04-01: v1.0.1 - Added validation for invalid or missing URLs to prevent
+#                       downstream processing errors and improve error reporting
+#                     - Implemented direct URL construction as fallback mechanism
+#                       when standard scraping cannot locate Excel file links
+#                     - Enhanced batch processing with better error handling
+#                     - Added seed consistency for parallel processing to ensure
+#                       reproducible results across executions
+# 2023-03-15: v1.0.0 - Initial release
+#
+# Usage: This script is called from main.R and should not be run directly.
 
 # ---- Load Libraries ----
 suppressPackageStartupMessages({
@@ -46,6 +59,12 @@ get_excel_link_from_page <- function(row) {
     error = NA_character_
   )
   
+  # Check for invalid URL before proceeding
+  if (is.na(page_url) || nchar(page_url) == 0) {
+    return(default_result %>% 
+             dplyr::mutate(error = "Invalid or missing page URL"))
+  }
+  
   tryCatch({
     # Retrieve and parse the HTML content
     html <- safe_read_html(page_url)
@@ -62,14 +81,39 @@ get_excel_link_from_page <- function(row) {
       xpath = "//a[contains(@href, '.xls') or contains(@href, '.xlsx')]"
     )
     
+    # If no Excel links found, try direct URL construction as fallback
+    if (length(excel_links) == 0) {
+      # Extract table number from URL for direct construction
+      url_table_num <- stringr::str_extract(page_url, "dt\\d+_(\\d+)\\.(\\d+)", group = 1)
+      url_table_subnum <- stringr::str_extract(page_url, "dt\\d+_(\\d+)\\.(\\d+)", group = 2)
+      
+      if (!is.na(url_table_num) && !is.na(url_table_subnum)) {
+        # Construct direct Excel URL
+        constructed_url <- glue::glue(
+          "https://nces.ed.gov/programs/digest/{year}/tables/xls/tabn{url_table_num}{url_table_subnum}.xls"
+        )
+        
+        message(glue::glue("No Excel link found, trying constructed URL: {constructed_url}"))
+        
+        # Return with constructed URL
+        return(tibble::tibble(
+          year = year,
+          chapter = chapter,
+          table_number = table_number,
+          table_title = row$table_title,
+          page_url = page_url,
+          excel_url = constructed_url,
+          error = NA_character_
+        ))
+      } else {
+        # If we can't construct URL, return error
+        return(default_result %>% 
+                 dplyr::mutate(error = "No Excel links found on page and cannot construct direct URL"))
+      }
+    }
+    
     # Extract href attributes from links
     excel_hrefs <- purrr::map_chr(excel_links, rvest::html_attr, "href")
-    
-    # If no Excel links found, return default with error
-    if (length(excel_hrefs) == 0) {
-      return(default_result %>% 
-               dplyr::mutate(error = "No Excel links found on page"))
-    }
     
     # Get the first Excel link
     link <- excel_hrefs[1]
@@ -129,12 +173,59 @@ get_excel_link_from_page <- function(row) {
   }, error = function(e) {
     # On any error, return the default with error message
     return(default_result %>% 
-             dplyr::mutate(error = glue("Error: {e$message}")))
+             dplyr::mutate(error = glue::glue("Error: {e$message}")))
   })
 }
 
+#' Construct Direct Excel URL Without HTML Scraping
+#' 
+#' Creates a direct URL to an Excel file based on table information
+#' without requiring HTML scraping, serving as a fallback mechanism
+#' when normal scraping fails.
+#' 
+#' @param row A row from the tables dataframe containing year and table_number
+#' @return A string with the constructed Excel URL or NA if not possible
+#' 
+#' @examples
+#' # Example row with year "d22" and table_number "101.20"
+#' row <- list(year = "d22", table_number = "101.20")
+#' url <- construct_direct_excel_url(row)
+#' # Returns: "https://nces.ed.gov/programs/digest/d22/tables/xls/tabn10120.xls"
+
+construct_direct_excel_url <- function(row) {
+  # Extract components from row
+  year <- row$year
+  table_number <- row$table_number
+  
+  # Check for required values
+  if (is.na(table_number) || !grepl("\\.", table_number)) {
+    return(NA_character_)
+  }
+  
+  # Split table number to extract main and sub parts
+  parts <- strsplit(table_number, "\\.")[[1]]
+  if (length(parts) != 2) {
+    return(NA_character_)
+  }
+  
+  main_num <- parts[1]
+  sub_num <- parts[2]
+  
+  # Construct URL
+  url <- paste0(
+    "https://nces.ed.gov/programs/digest/",
+    year,
+    "/tables/xls/tabn",
+    main_num,
+    sub_num,
+    ".xls"
+  )
+  
+  return(url)
+}
+
 # -----------------------------------------------------------------------------
-# Apply Filtering Based on Configuration
+# Main Processing Section
 # -----------------------------------------------------------------------------
 
 # Check if all_tables exists
@@ -148,8 +239,16 @@ message("Filtering tables based on configuration...")
 filtered_tables <- all_tables
 
 if (config$filter_mode == "year_only") {
+  # Print values for debugging
+  if (config$verbose) {
+    message("Filter years: ", paste(config$filter_years, collapse=", "))
+    message("Table years: ", paste(unique(filtered_tables$year), collapse=", "))
+  }
+  
+  # Make sure format is consistent before filtering
   filtered_tables <- filtered_tables %>% 
     dplyr::filter(year %in% config$filter_years)
+  
   message(glue("Applied year filter: {paste(config$filter_years, collapse=', ')}"))
   
 } else if (config$filter_mode == "table_only") {
@@ -197,17 +296,34 @@ for (i in seq_along(batches)) {
   
   message(glue("Processing batch {i}/{length(batches)} ({nrow(batch)} tables)"))
   
+  # Create a temporary variable to ensure the current batch is available
+  current_batch <- batch
+  
   # Process this batch in parallel
   batch_results <- furrr::future_map_dfr(
-    split(batch, seq_len(nrow(batch))),
-    get_excel_link_from_page
+    split(current_batch, seq_len(nrow(current_batch))),
+    function(row) {
+      result <- get_excel_link_from_page(row)
+      # If no Excel URL was found, try direct URL construction
+      if (is.na(result$excel_url)) {
+        direct_url <- construct_direct_excel_url(row)
+        if (!is.na(direct_url)) {
+          result$excel_url <- direct_url
+          result$excel_url_source <- "direct_construction"
+          result$error <- NA_character_
+          message(glue::glue("Using directly constructed URL for {row$table_number}: {direct_url}"))
+        }
+      }
+      return(result)
+    },
+    .options = furrr::furrr_options(seed = TRUE, packages = c("rvest", "stringr", "xml2", "dplyr", "tibble", "glue"))
   )
   
   excel_links_list[[i]] <- batch_results
   
   # Update progress
   processed_count <- processed_count + nrow(batch)
-  message(glue("Processed {processed_count}/{total_tables} tables"))
+  message(glue::glue("Processed {processed_count}/{total_tables} tables"))
 }
 
 # Combine all batches
