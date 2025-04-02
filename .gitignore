@@ -1,0 +1,84 @@
+# R specific files
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+.Rapp.history
+.Renviron
+.Rprofile
+*-Ex.R
+/*.tar.gz
+/*.Rcheck/
+.Rproj
+/*.Rproj
+vignettes/*.html
+vignettes/*.pdf
+# Output files from R CMD build/check
+/*.tar.gz
+/*.Rcheck/
+# Downloaded data and output files
+output/
+log/
+*.xlsx
+*.xls
+*.csv
+*.tsv
+*.rds
+*.zip
+*.tar
+*.Rdata
+*.Rds
+# Hash registry - may contain paths specific to your system
+log/hash_registry.csv
+# Temporary files
+tmp/
+temp/
+.tmp*
+*~
+~$*
+*.swp
+*.bak
+.DS_Store
+# Personal and system files
+.env
+*.env
+.env.*
+.Renviron
+.httr-oauth
+.github-token
+auth_token.txt
+*_token.txt
+*_key.txt
+*_secret.txt
+*_credentials.txt
+*_password.txt
+*.pem
+*.key
+*.ppk
+*id_rsa*
+*known_hosts
+*authorized_keys
+# File paths, configurations may have personal information
+.here
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+# Editor directories and files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.emacs.desktop
+*.vim
+*.swp
+*.swo
+# Specific to this project
+# Add any other file patterns specific to your workflow
+generate_change_log.R
+hash_test

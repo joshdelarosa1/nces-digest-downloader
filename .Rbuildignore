@@ -1,0 +1,5 @@
+^digestofed/output/
+^digestofed/log/
+.DS_Store
+^.*\.Rproj$
+^\.Rproj\.user$

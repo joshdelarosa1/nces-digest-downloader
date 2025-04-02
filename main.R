@@ -7,7 +7,7 @@
 #
 # Version: 1.0.1
 # Last Update: 2025-04-01
-# Author: Josue De La Rosa
+# Author: Josh De La Rosa
 #
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
@@ -50,7 +50,7 @@
 # ===== USER CONFIGURATION (EDIT THESE VALUES) =====
 
 # Years to download (e.g., 24 = 2024, 23 = 2023, etc.)
-YEARS_TO_DOWNLOAD <- c(24)
+YEARS_TO_DOWNLOAD <- c(22)
 
 # Download mode:
 # "all"        - Download all tables for the specified years

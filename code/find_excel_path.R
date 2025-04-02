@@ -8,7 +8,7 @@
 #
 # Version: 1.0.1
 # Last Update: 2025-04-01
-# Author: Josue De La Rosa
+# Author: Josh De La Rosa
 #
 # Change Log:
 # 2025-04-01: v1.0.1 - Added validation for invalid or missing URLs to prevent
