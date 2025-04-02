@@ -1,0 +1,27 @@
+Package: digestdownloader
+Title: NCES Digest Table Downloader
+Version: 1.1.0
+Authors@R:
+    person("Josh", "De La Rosa", email = "josh.delarosa1@gmail.com", role = c("aut", "cre"))
+Description: Downloads and manages Excel tables from the NCES Digest of Education Statistics.
+    Includes scraping, metadata extraction, logging, and file verification.
+    Implements robust error handling and parallelization for reproducible workflows.
+License: MIT
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.2.3
+Depends: R (>= 4.1.0)
+Imports:
+    httr,
+    dplyr,
+    purrr,
+    stringr,
+    furrr,
+    glue,
+    rvest,
+    tibble,
+    fs,
+    digest,
+    xml2,
+    readr,
+    readxl
