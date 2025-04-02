@@ -4,11 +4,11 @@
 
 If you discover a security vulnerability in this project, we encourage responsible disclosure.
 
-Please **report it privately via email** to:
+Please report it **privately** by contacting:
 
 📧 josh.delarosa1@gmail.com
 
-Avoid publicly disclosing the issue until we have had a chance to review and address it.
+Do not create a public issue. We will respond within 2 business days and work to resolve the issue promptly.
 
 ---
 
@@ -16,8 +16,8 @@ Avoid publicly disclosing the issue until we have had a chance to review and add
 
 | Version | Supported | Notes                                |
 |---------|-----------|--------------------------------------|
-| 1.0.1   | ✅ Yes     | Latest release as of April 2025      |
-| <1.0.0  | ❌ No      | Please upgrade to the latest version |
+| 1.1.0   | ✅ Yes     | Latest stable release                |
+| <1.1.0  | ❌ No      | Please upgrade to the latest version |
 
 ---
 
@@ -25,34 +25,36 @@ Avoid publicly disclosing the issue until we have had a chance to review and add
 
 This repository includes the following built-in security features:
 
-- **URL validation** and **retry limits** on download attempts to prevent DoS or server abuse&#8203;:contentReference[oaicite:0]{index=0}.
-- **Exponential backoff and throttling** in all HTTP requests to avoid rate limiting and reduce network risk&#8203;:contentReference[oaicite:1]{index=1}.
-- **SHA hash tracking** for verifying file integrity and preventing tampering&#8203;:contentReference[oaicite:2]{index=2}.
-- **Isolated parallel processing** via `{furrr}` with seed-based reproducibility for safe multi-threaded execution&#8203;:contentReference[oaicite:3]{index=3}.
-- **Input validation** for URLs and table filters to prevent malformed downloads or script errors&#8203;:contentReference[oaicite:4]{index=4}.
-- Dependencies are managed and checked using a dedicated setup script (`install_dependencies.R`)&#8203;:contentReference[oaicite:5]{index=5}.
+- **URL validation** and **retry limits** on download attempts to prevent denial-of-service (DoS) or abuse of remote servers.
+- **Exponential backoff** and **throttling** in all HTTP requests to avoid rate limiting and reduce network risk.
+- **SHA hash tracking** to verify file integrity and detect tampering.
+- **Isolated parallel processing** using `{furrr}` with seed-based reproducibility for safe, deterministic execution across threads.
+- **Input validation** for URLs and table filters to avoid malformed or unsafe scraping operations.
+- **Dependency setup** via a dedicated `install_dependencies.R` script to ensure consistent environment configuration.
 
 ---
 
 ## Additional Recommendations
 
-- If using this code on shared systems or servers, validate all configuration inputs (especially table names and paths).
-- Ensure proper file permissions for the `output/` and `log/` directories.
-- Monitor your network activity if using bulk downloads in automated environments.
+- Use caution when running this code in automated pipelines or on shared infrastructure.
+- Ensure secure file permissions on the `log/` and `output/` directories.
+- Validate downloaded files and monitor changes using the built-in hash registry.
 
 ---
 
 ## Dependencies and Vulnerabilities
 
-This project uses several R packages from CRAN and Bioconductor. While CRAN maintains a generally secure ecosystem, known vulnerabilities in packages should be reported via:
+This project uses publicly available R packages from CRAN. Any security issues discovered in these dependencies should be reported through:
 
-- [R security bugzilla](https://bugs.r-project.org/)
-- GitHub’s [Dependabot alerts](https://docs.github.com/en/code-security)
+- The [R Project Bugzilla](https://bugs.r-project.org/)
+- GitHub's built-in [Dependabot Alerts](https://docs.github.com/en/code-security)
 
 ---
 
 ## Disclaimer
 
-This tool is provided **as-is** without warranty. Use it responsibly and ensure compliance with the NCES data usage policies.
+This software is provided **"as is"** without warranty of any kind. Use at your own risk and ensure compliance with the [NCES Digest of Education Statistics](https://nces.ed.gov/programs/digest/) data use policies.
 
-If you have further questions or need support, please open an issue on GitHub or contact the maintainer directly.
+---
+
+Thank you for helping keep this project secure!
