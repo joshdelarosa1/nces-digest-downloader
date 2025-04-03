@@ -6,9 +6,9 @@
 #          Provides robust methods for downloading, hashing, processing,
 #          and error handling.
 #
-# Version: 1.0.1
+# Version: 1.1.0
 # Last Update: 2025-04-01
-# Author: Josh De La Rosa
+# Author: Josh DeLaRosa
 #
 # Change Log:
 # 2025-04-01: v1.0.1 - Enhanced safe_read_html with improved headers and encoding

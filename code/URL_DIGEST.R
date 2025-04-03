@@ -6,9 +6,9 @@
 #          handling and parallelism. This script identifies available tables for each
 #          digest year and extracts key metadata.
 #
-# Version: 1.0.1
+# Version: 1.1.0
 # Last Update: 2025-04-01
-# Author: Josh De La Rosa
+# Author: Josh DeLaRosa
 #
 # Change Log:
 # 2025-04-01: v1.0.1 - Added seed consistency for parallel processing to ensure

@@ -6,9 +6,9 @@
 #          NCES Digest downloader. Designed to be run standalone
 #          by novice users who need to set up their environment.
 #
-# Version: 1.0.1
+# Version: 1.1.0
 # Last Update: 2025-04-01
-# Author: Josh De La Rosa
+# Author: Josh DeLaRosa
 #
 # Change Log:
 # 2025-04-01: v1.0.1 - Added curl package as a required dependency for improved

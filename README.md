@@ -1,3 +1,29 @@
+<!-- Project Metadata Start -->
+<!-- Project Metadata Start -->
+**Version:** 1.1.0
+**Release Date:** 2025-04-01
+
+**Changelog:**
+[1.1.0] - 2025-04-01
+- Added: 
+  - Full integration of parallel scraping and downloading using {furrr}
+  - Page title enhancement logic for NCES Digest metadata (enhance_with_page_titles)
+  - Robust hash-based integrity verification of downloaded Excel files
+  - Extraction of document metadata from .xlsx files (e.g., author, created date)
+  - Throttling logic to regulate HTTP request intervals and prevent server overload
+- Improved: 
+  - Enhanced error handling in all network operations (safe_read_html, download_excel_file)
+  - Expanded retry logic using exponential backoff with jitter
+  - Browser-like headers for better server compatibility with NCES sites
+  - Modular logging system with timestamped log files and hash registry
+- Security: 
+  - Added .github/SECURITY.md with responsible disclosure policy
+  - Enabled GitHub Dependabot alerts and security updates
+  - Validated all URL inputs and prevented NA/null scraping calls
+- Centralized project metadata management: Introduced a YAML-based configuration (project_config.yml) and an update script (update_project_metadata.R) to automatically update project metadata across the DESCRIPTION file, R script headers, README.md, and optionally create an annotated Git tag.
+
+<!-- Project Metadata End -->
+
 # NCES Digest Data Downloader
 
 A streamlined tool for downloading Excel files from the National Center for Education Statistics (NCES) Digest of Education Statistics.

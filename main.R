@@ -5,9 +5,9 @@
 # Purpose: Downloads Excel files from the NCES Digest of Education Statistics
 #          with customizable filtering and parallel processing capabilities.
 #
-# Version: 1.0.1
+# Version: 1.1.0
 # Last Update: 2025-04-01
-# Author: Josh De La Rosa
+# Author: Josh DeLaRosa
 #
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
@@ -17,9 +17,9 @@
 #          and error handling. This script applies filtering based on user 
 #          configuration and extracts download links from table pages.
 #
-# Version: 1.0.1
+# Version: 1.1.0
 # Last Update: 2025-04-01
-# Author: Josue De La Rosa
+# Author: Josh DeLaRosa
 #
 # Change Log:
 # 2025-04-01: v1.0.1 - Added validation for invalid or missing URLs
