@@ -1,36 +1,57 @@
-# R specific files
+# R/session state
 .Rproj.user/
 .Rhistory
+.Rapp.history
 .RData
 .Ruserdata
-.Rapp.history
+.Rcheck/
+.Rprofile.local
 .Renviron
-.Rprofile
-*-Ex.R
-/*.tar.gz
-/*.Rcheck/
-.Rproj
-/*.Rproj
+.Renviron.local
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+id_rsa*
+*.crt
+*.keystore
+*.jks
+*.pfx
+
+# Dependency caches and package managers
+renv/library/
+renv/staging/
+packrat/
+
+# Build/site artifacts
+# NOTE: docs/ is the MkDocs SOURCE directory and IS tracked.
+#       site/ is the MkDocs BUILD output and is NOT tracked.
+#       _site/ covers Jekyll/pkgdown output.
 vignettes/*.html
 vignettes/*.pdf
-# Output files from R CMD build/check
-/*.tar.gz
-/*.Rcheck/
-# Downloaded data and output files
+site/
+_site/
+.quarto/
+node_modules/
+
+# IDE/editor and OS noise
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# Project runtime artifacts
 output/
 log/
-*.xlsx
-*.xls
-*.csv
-*.tsv
-*.rds
-*.zip
-*.tar
-*.Rdata
-*.Rds
-# Hash registry - may contain paths specific to your system
-log/hash_registry.csv
-# Temporary files
+reports/*.txt
+reports/*.json
+reports/*.csv
+!reports/.gitkeep
+!reports/SECURITY_FINDINGS.md
 tmp/
 temp/
 .tmp*
@@ -38,47 +59,17 @@ temp/
 ~$*
 *.swp
 *.bak
-.DS_Store
-# Personal and system files
-.env
-*.env
-.env.*
-.Renviron
-.httr-oauth
-.github-token
-auth_token.txt
-*_token.txt
-*_key.txt
-*_secret.txt
-*_credentials.txt
-*_password.txt
-*.pem
-*.key
-*.ppk
-*id_rsa*
-*known_hosts
-*authorized_keys
-# File paths, configurations may have personal information
-.here
-# OS-specific files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-desktop.ini
-# Editor directories and files
-.idea/
-.vscode/
-*.sublime-project
-*.sublime-workspace
-.emacs.desktop
-*.vim
-*.swp
-*.swo
-# Specific to this project
-# Add any other file patterns specific to your workflow
-generate_change_log.R
-hash_test
+
+# Large and local data blobs
+*.sqlite
+*.xlsx
+*.xls
+*.csv
+*.tsv
+*.rds
+*.Rds
+*.Rdata
+*.zip
+*.tar
+*.tar.gz
+*.qs

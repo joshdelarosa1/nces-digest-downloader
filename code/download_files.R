@@ -1,25 +1,12 @@
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
-# File: download_files.R
-# Description:
-#   Downloads Excel files from NCES Digest URLs with optimized parallel processing
-#   and comprehensive error handling. Manages both .xls and .xlsx formats with
-#   integrity verification.
+# Script: code/download_files.R
+# Purpose: Download resolved Excel URLs, validate payloads, and persist
+#          execution logs and hash history.
+# Notes: This script is sourced by `main.R` after `excel_links_df` is prepared.
 # -----------------------------------------------------------------------------
 
 # ---- Setup ----
-suppressPackageStartupMessages({
-  library(httr)
-  library(dplyr)
-  library(purrr)
-  library(stringr)
-  library(furrr)
-  library(digest)
-  library(glue)
-  library(tibble)
-  library(fs)
-})
-
 if (!exists("excel_links_df")) {
   stop("The variable 'excel_links_df' does not exist. Run find_excel_path.R first.")
 }
@@ -39,45 +26,138 @@ success_count <- 0
 fail_count <- 0
 skip_count <- 0
 
-throttle_config <- list(
-  min_delay = 3,
-  current_delay = 3,
-  max_delay = 30,
-  last_request_time = Sys.time() - as.difftime(100, units = "secs"),
-  consecutive_failures = 0,
-  failure_threshold = 3,
-  backoff_factor = 1.5
-)
-
-apply_throttling <- function() {
-  time_since_last <- as.numeric(difftime(Sys.time(), throttle_config$last_request_time, units = "secs"))
-  if (time_since_last < throttle_config$current_delay) {
-    Sys.sleep(throttle_config$current_delay - time_since_last)
-  }
-  throttle_config$last_request_time <- Sys.time()
+# ---------------------------------------------------------------------------
+# In-memory hash registry: load once, append in-process, flush once at end.
+# This avoids the O(n²) pattern where each file triggered a full CSV
+# read + rewrite cycle.
+# ---------------------------------------------------------------------------
+.hash_reg <- new.env(parent = emptyenv())
+.hash_reg$df <- if (file.exists(hash_registry_path)) {
+  tryCatch(
+    readr::read_csv(hash_registry_path, show_col_types = FALSE,
+                    col_types = readr::cols(.default = "c")),
+    error = function(e) {
+      warning("Could not load hash registry; starting fresh: ", conditionMessage(e))
+      data.frame(file_path = character(), hash = character(),
+                 download_date = character(), timestamp = character(),
+                 stringsAsFactors = FALSE)
+    }
+  )
+} else {
+  data.frame(file_path = character(), hash = character(),
+             download_date = character(), timestamp = character(),
+             stringsAsFactors = FALSE)
 }
 
+# In-memory variants shadow disk-based helpers for batch efficiency.
+#'
+#' Record a hash entry in the in-memory registry.
+#'
+#' @param file_path Destination file path.
+#' @param hash Hash digest value for the file.
+#' @param download_date Download date for the registry row.
+#' @param registry_path Unused compatibility parameter.
+#' @return Logical `TRUE` when entry is recorded, otherwise `FALSE`.
+register_file_hash <- function(file_path, hash, download_date = Sys.Date(),
+                                registry_path = NULL) {
+  if (is.na(hash)) return(FALSE)
+  .hash_reg$df <- rbind(.hash_reg$df, data.frame(
+    file_path     = as.character(file_path),
+    hash          = as.character(hash),
+    download_date = as.character(download_date),
+    timestamp     = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    stringsAsFactors = FALSE
+  ))
+  return(TRUE)
+}
+
+#'
+#' Look up an existing hash registry entry for a file path.
+#'
+#' @param file_path Destination file path to search.
+#' @param hash Optional hash for equality comparison.
+#' @param registry_path Unused compatibility parameter.
+#' @return Named list containing existence, hash match, and latest metadata.
+check_hash_registry <- function(file_path, hash = NULL, registry_path = NULL) {
+  empty <- list(exists = FALSE, hash_match = FALSE,
+                last_download = NA_character_, registered_hash = NA_character_)
+  df <- .hash_reg$df
+  if (nrow(df) == 0) return(empty)
+  matches <- df[df$file_path == file_path, ]
+  if (nrow(matches) == 0) return(empty)
+  most_recent <- matches[nrow(matches), ]
+  list(exists = TRUE,
+       hash_match = !is.null(hash) && isTRUE(most_recent$hash == hash),
+       last_download = most_recent$download_date,
+       registered_hash = most_recent$hash)
+}
+
+# Use an environment so mutations inside apply_throttling() / adjust_throttling()
+# persist across calls. A plain list has value semantics in R, so assignments
+# inside a function would only modify a local copy.
+throttle_state <- new.env(parent = emptyenv())
+throttle_state$min_delay         <- config$min_dl_delay %||% 3
+throttle_state$current_delay     <- config$min_dl_delay %||% 3
+throttle_state$max_delay         <- config$max_delay    %||% 30
+throttle_state$last_request_time <- Sys.time() - as.difftime(100, units = "secs")
+throttle_state$consecutive_fails <- 0L
+throttle_state$failure_threshold <- 3L
+throttle_state$backoff_factor    <- 1.5
+
+#'
+#' Enforce adaptive request delay between downloads.
+#'
+#' @return `NULL`; updates global throttle state by side effect.
+apply_throttling <- function() {
+  elapsed <- as.numeric(difftime(Sys.time(), throttle_state$last_request_time, units = "secs"))
+  if (elapsed < throttle_state$current_delay) {
+    Sys.sleep(throttle_state$current_delay - elapsed)
+  }
+  throttle_state$last_request_time <- Sys.time()
+}
+
+#'
+#' Adjust adaptive throttling state based on prior download outcome.
+#'
+#' @param success Logical indicating success of the previous attempt.
+#' @return `NULL`; updates global throttle state by side effect.
 adjust_throttling <- function(success) {
   if (success) {
-    throttle_config$consecutive_failures <- 0
-    throttle_config$current_delay <- max(throttle_config$min_delay, throttle_config$current_delay / sqrt(throttle_config$backoff_factor))
+    throttle_state$consecutive_fails <- 0L
+    throttle_state$current_delay <- max(
+      throttle_state$min_delay,
+      throttle_state$current_delay / sqrt(throttle_state$backoff_factor)
+    )
   } else {
-    throttle_config$consecutive_failures <- throttle_config$consecutive_failures + 1
-    if (throttle_config$consecutive_failures >= throttle_config$failure_threshold) {
-      throttle_config$current_delay <- min(throttle_config$current_delay * throttle_config$backoff_factor, throttle_config$max_delay)
+    throttle_state$consecutive_fails <- throttle_state$consecutive_fails + 1L
+    if (throttle_state$consecutive_fails >= throttle_state$failure_threshold) {
+      throttle_state$current_delay <- min(
+        throttle_state$current_delay * throttle_state$backoff_factor,
+        throttle_state$max_delay
+      )
     }
   }
 }
 
-# Complete implementation of download_excel_file function
-download_excel_file <- function(url, dest_path, min_size = 100, max_retries = 5, overwrite = FALSE, verify_extension = TRUE) {
+# Download one Excel artifact with retry, validation, and hash registration.
+#'
+#' Download one Excel file with retry, validation, and hash registration.
+#'
+#' @param url Source file URL.
+#' @param dest_path Destination file path.
+#' @param min_size Minimum byte size required for a valid payload.
+#' @param max_retries Maximum download retry attempts.
+#' @param overwrite Logical indicating whether to replace existing files.
+#' @param verify_extension Logical indicating whether URL extension is validated.
+#' @return List containing status, hash, destination path, and optional errors.
+download_excel_file <- function(url, dest_path, min_size = 5000, max_retries = 5, overwrite = FALSE, verify_extension = TRUE) {
   # Check if file already exists and handle according to overwrite parameter
   if (file.exists(dest_path) && !overwrite) {
     hash <- calculate_file_hash(dest_path)
     
     # Register the hash if not already in registry
     registry_result <- check_hash_registry(dest_path, hash)
-    if (!is.list(registry_result) || !registry_result$exists) {
+    if (!registry_result$exists) {
       register_file_hash(dest_path, hash)
     }
     
@@ -157,12 +237,30 @@ download_excel_file <- function(url, dest_path, min_size = 100, max_retries = 5,
         stop("Download failed: File not created")
       }
       
-      # Check file size
+      # Check file size — guard against HTML error pages returned as 200 OK
       file_size <- file.info(temp_file)$size
       if (file_size < min_size) {
-        stop(glue::glue("Downloaded file too small: {file_size} bytes"))
+        stop(glue::glue("Downloaded file too small ({file_size} bytes < {min_size} byte minimum). Likely an error page, not a valid Excel file."))
       }
-      
+
+      # Magic-byte check: confirm the file is an Excel binary, not an HTML error page
+      file_ext  <- tolower(tools::file_ext(dest_path))
+      magic     <- readBin(temp_file, what = "raw", n = 4L)
+      valid_magic <- switch(file_ext,
+        xlsx = length(magic) >= 2L &&
+                 magic[1L] == as.raw(0x50) && magic[2L] == as.raw(0x4B),
+        xls  = length(magic) >= 4L &&
+                 magic[1L] == as.raw(0xD0) && magic[2L] == as.raw(0xCF) &&
+                 magic[3L] == as.raw(0x11) && magic[4L] == as.raw(0xE0),
+        TRUE  # unknown extension: let it through
+      )
+      if (!valid_magic) {
+        stop(glue::glue(
+          "File failed magic-byte check for .{file_ext} format. ",
+          "Likely an HTML error page masquerading as an Excel file."
+        ))
+      }
+
       # Move file to destination
       file.copy(temp_file, dest_path, overwrite = TRUE)
       
@@ -204,18 +302,26 @@ download_excel_file <- function(url, dest_path, min_size = 100, max_retries = 5,
   ))
 }
 
+# Extract document metadata from xlsx core XML properties when available.
+#'
+#' Extract metadata fields from an `.xlsx` file's core properties.
+#'
+#' @param file_path Local file path to an Excel artifact.
+#' @return Named list of metadata fields with `NA` when unavailable.
 extract_xml_properties <- function(file_path) {
   ext <- tolower(fs::path_ext(file_path))
-  
+
+  NA_XML_PROPS <- list(
+    creator          = NA_character_,
+    last_modified_by = NA_character_,
+    created          = NA_character_,
+    modified         = NA_character_,
+    title            = NA_character_
+  )
+
   # Return NA for all fields if not xlsx
   if (ext != "xlsx") {
-    return(list(
-      creator = NA_character_,
-      last_modified_by = NA_character_,
-      created = NA_character_,
-      modified = NA_character_,
-      title = NA_character_
-    ))
+    return(NA_XML_PROPS)
   }
   
   # Use a temporary directory for extracting XML
@@ -231,13 +337,7 @@ extract_xml_properties <- function(file_path) {
     # Load XML document
     core_xml_path <- file.path(temp_dir, "docProps", "core.xml")
     if (!fs::file_exists(core_xml_path)) {
-      return(list(
-        creator = NA_character_,
-        last_modified_by = NA_character_,
-        created = NA_character_,
-        modified = NA_character_,
-        title = NA_character_
-      ))
+      return(NA_XML_PROPS)
     }
     
     # Read XML content
@@ -269,21 +369,21 @@ extract_xml_properties <- function(file_path) {
       title = if (length(title) > 0 && nzchar(title)) title else NA_character_
     ))
   }, error = function(e) {
-    if (config$verbose) {
-      message(glue::glue("Error extracting XML properties from {file_path}: {e$message}"))
-    }
-    return(list(
-      creator = NA_character_,
-      last_modified_by = NA_character_,
-      created = NA_character_,
-      modified = NA_character_,
-      title = NA_character_
-    ))
+    warning(glue::glue("Could not extract XML properties from {file_path}: {e$message}"))
+    return(NA_XML_PROPS)
   })
 }
 
-# Simplified version of the function
-download_excel_file_with_reporting <- function(row_index, row, overwrite = FALSE, min_file_size = 100) {
+# Wrap download execution and emit a normalized per-row log record.
+#'
+#' Download one table artifact and return a normalized log row.
+#'
+#' @param row_index Row index from `excel_links_df`.
+#' @param row Single-row table metadata input.
+#' @param overwrite Logical indicating whether to overwrite existing files.
+#' @param min_file_size Minimum accepted payload size in bytes.
+#' @return Tibble with one row containing processing status and metadata.
+download_excel_file_with_reporting <- function(row_index, row, overwrite = FALSE, min_file_size = 5000) {
   # Extract basic information
   year <- row$year
   table_number <- row$table_number
@@ -389,17 +489,25 @@ download_excel_file_with_reporting <- function(row_index, row, overwrite = FALSE
 
 # --- Execution Loop ---
 download_logs <- vector("list", total_files)
-for (i in seq_len(total_files)) {
-  row <- excel_links_df[i, ]
-  result <- download_excel_file_with_reporting(i, row, overwrite = FALSE)
-  download_logs[[i]] <- result
-  
-  # Show appropriate status in the message
-  status <- result$processing_status
-  message(glue("Downloaded {i}/{total_files}: {row$year} table {row$table_number} => {status}"))
-}
+progressr::with_progress({
+  p <- progressr::progressor(steps = total_files)
+  for (i in seq_len(total_files)) {
+    row <- excel_links_df[i, ]
+    result <- download_excel_file_with_reporting(i, row, overwrite = FALSE)
+    download_logs[[i]] <- result
+    status <- result$processing_status
+    p(message = glue("{row$year} {row$table_number}: {status}"))
+  }
+})
 
 log_df <- bind_rows(download_logs)
+
+# Flush in-memory hash registry to disk once after all downloads complete.
+tryCatch({
+  readr::write_csv(.hash_reg$df, hash_registry_path)
+}, error = function(e) {
+  warning("Could not save hash registry to disk: ", conditionMessage(e))
+})
 
 # Debug: Show all the processing statuses
 message("Status counts in log:")

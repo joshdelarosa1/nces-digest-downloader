@@ -1,32 +1,19 @@
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
-# File: utils.R
+# Module: R/utils.R
+# Purpose: Shared runtime utilities for request retries, filesystem setup, and
+#          hash registry tracking.
+# Notes: These helpers are sourced by orchestration and download scripts.
 # -----------------------------------------------------------------------------
-# Purpose: Enhanced utility functions for the NCES Digest download pipeline.
-#          Provides robust methods for downloading, hashing, processing,
-#          and error handling.
-#
-# Version: 1.1.0
-# Last Update: 2025-04-01
-# Author: Josh DeLaRosa
-#
-# Change Log:
-# 2025-04-01: v1.0.1 - Enhanced safe_read_html with improved headers and encoding
-#                       to properly handle older HTML formats (pre-2019 NCES documents)
-#                     - Added validation to prevent errors with NA values in URLs
-#                     - Implemented uncompressed content request headers for better
-#                       compatibility with NCES servers
-# 2023-03-15: v1.0.0 - Initial release
-#
-# Usage: This script is imported by main.R and provides utility functions
-#        for the entire application.
+
+# Null-coalescing operator: returns `x` when available, otherwise fallback `y`.
+`%||%` <- function(x, y) if (!is.null(x)) x else y
 
 
-#' Read HTML with Exponential Backoff Retries
+#' Read HTML with Retry and Backoff
 #'
-#' Downloads and parses HTML content from a URL with exponential backoff retry
-#' mechanism for handling intermittent network issues. Includes improved headers
-#' and encoding handling.
+#' Downloads and parses HTML content from a URL with exponential backoff retries
+#' and request headers tuned for NCES pages.
 #'
 #' @param url A character string containing the URL to fetch.
 #' @param max_retries Integer specifying the maximum number of retry attempts (default: 5).
@@ -34,7 +21,7 @@
 #' @param max_delay Maximum delay in seconds between retries (default: 30).
 #' @param user_agent Custom user agent string for the request (default: "R-digest-downloader").
 #'
-#' @return An `xml_document` object if successful, or NULL if all attempts fail.
+#' @return An `xml_document` on success, or `NULL` after all retries fail.
 #'
 #' @examples
 #' # Basic usage
@@ -50,8 +37,11 @@
 #'
 #' @export
 
-safe_read_html <- function(url, max_retries = 5, initial_delay = 1, max_delay = 30,
-                           user_agent = "R-digest-downloader") {
+safe_read_html <- function(url,
+                           max_retries   = if (exists("config")) config$max_retries   %||% 5L else 5L,
+                           initial_delay = if (exists("config")) config$initial_delay %||% 1  else 1,
+                           max_delay     = if (exists("config")) config$max_delay     %||% 30 else 30,
+                           user_agent    = "R-digest-downloader") {
   # Validate URL to prevent errors with NA values
   if (is.na(url) || !is.character(url) || nchar(url) == 0) {
     message("Invalid URL provided: NA or empty string")
@@ -121,7 +111,10 @@ safe_read_html <- function(url, max_retries = 5, initial_delay = 1, max_delay = 
 #' @export
 ensure_dir <- function(path, verbose = FALSE) {
   if (!dir.exists(path)) {
-    dir.create(path, recursive = TRUE, showWarnings = FALSE)
+    ok <- dir.create(path, recursive = TRUE, showWarnings = FALSE)
+    if (!ok && !dir.exists(path)) {
+      stop(glue::glue("Failed to create directory '{path}'. Check permissions and disk space."))
+    }
     if (verbose) message(glue::glue("Created directory: {path}"))
   }
   invisible(path)
@@ -214,40 +207,34 @@ register_file_hash <- function(file_path, hash, download_date = Sys.Date(),
 #' @export
 check_hash_registry <- function(file_path, hash = NULL,
                                 registry_path = file.path(config$log_dir, "hash_registry.csv")) {
-  if (!file.exists(registry_path)) return(FALSE)
-  
+  empty <- list(exists = FALSE, hash_match = FALSE,
+                last_download = NA_character_, registered_hash = NA_character_)
+
+  if (!file.exists(registry_path)) return(empty)
+
   # Read registry
   registry <- tryCatch({
     utils::read.csv(registry_path, stringsAsFactors = FALSE)
   }, error = function(e) {
     warning(glue::glue("Failed to read hash registry: {e$message}"))
-    return(FALSE)
+    return(NULL)
   })
-  
+
+  if (is.null(registry)) return(empty)
+
   # Find matching entries for this file path
   matches <- registry[registry$file_path == file_path, ]
-  
-  if (nrow(matches) == 0) {
-    return(FALSE)
-  }
-  
+
+  if (nrow(matches) == 0) return(empty)
+
   # Get most recent entry
   most_recent <- matches[which.max(as.POSIXct(matches$timestamp)), ]
-  
-  # If hash is provided, check for match
-  if (!is.null(hash)) {
-    hash_match <- most_recent$hash == hash
-    return(list(
-      exists = TRUE,
-      hash_match = hash_match,
-      last_download = most_recent$download_date,
-      registered_hash = most_recent$hash
-    ))
-  } else {
-    return(list(
-      exists = TRUE,
-      last_download = most_recent$download_date,
-      registered_hash = most_recent$hash
-    ))
-  }
+
+  # Always return a consistently-shaped named list
+  list(
+    exists = TRUE,
+    hash_match = !is.null(hash) && isTRUE(most_recent$hash == hash),
+    last_download = most_recent$download_date,
+    registered_hash = most_recent$hash
+  )
 }

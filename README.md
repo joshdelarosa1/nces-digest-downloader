@@ -1,177 +1,196 @@
-<!-- Project Metadata Start -->
-**Version:** 1.1.0  
-**Release Date:** 2025-04-01  
+# NCES Digest Downloader
 
-**Changelog:**  
-[1.1.0] - 2025-04-01  
-- **Added:**  
-  - Full integration of parallel scraping and downloading using {furrr}  
-  - Page title enhancement logic for NCES Digest metadata (enhance_with_page_titles)  
-  - Robust hash-based integrity verification of downloaded Excel files  
-  - Extraction of document metadata from .xlsx files (e.g., author, created date)  
-  - Throttling logic to regulate HTTP request intervals and prevent server overload  
-- **Improved:**  
-  - Enhanced error handling in all network operations (safe_read_html, download_excel_file)  
-  - Expanded retry logic using exponential backoff with jitter  
-  - Browser-like headers for better server compatibility with NCES sites  
-  - Modular logging system with timestamped log files and hash registry  
-- **Security:**  
-  - Added .github/SECURITY.md with responsible disclosure policy  
-  - Enabled GitHub Dependabot alerts and security updates  
-  - Validated all URL inputs and prevented NA/null scraping calls  
-- **Centralized project metadata management:**  
-  Introduced a YAML-based configuration (project_config.yml) and an update script (update_project_metadata.R) to automatically update project metadata across the DESCRIPTION file, R script headers, README.md, and optionally create an annotated Git tag.  
-<!-- Project Metadata End -->
+[![Docs CI](https://img.shields.io/github/actions/workflow/status/joshdelarosa1/nces-digest-downloader/docs.yml?branch=main&label=docs%20ci)](https://github.com/joshdelarosa1/nces-digest-downloader/actions/workflows/docs.yml)
+[![Documentation](https://img.shields.io/badge/docs-MkDocs-blue)](docs/)
+[![Coverage](https://img.shields.io/badge/coverage-TBD-lightgrey)](https://github.com/joshdelarosa1/nces-digest-downloader)
 
-# NCES Digest Data Downloader
+Automated retrieval of NCES Digest of Education Statistics Excel tables with filtering,
+resumable downloads, and file-integrity logging.
 
-A streamlined tool for downloading Excel files from the National Center for Education Statistics (NCES) Digest of Education Statistics.
+## Project Overview
 
-## Overview
+This project downloads Excel tables from the NCES Digest website, captures table metadata,
+and writes structured outputs and logs for reproducible analysis workflows.
 
-This tool allows you to:
-- Download tables from any NCES Digest year (e.g., 2024, 2023, etc.)
-- Filter downloads by specific table numbers or years
-- Track file changes using hash verification
-- Easily resume interrupted downloads
-- Process downloads reliably with built-in error handling
+## Features
 
-The strength of this program lies in its ability to handle variations across different Digests. For example, some files are in the `.xls` format while others are in `.xlsx`. By scraping the Digest menus, the system dynamically adjusts to download the correct file format. Additionally, because some Digest tables are not updated every year, the scraping process allows the program to locate available tables without needing to try every sequential permutation. The program also extracts metadata from `.xlsx` files to capture details about the table in a machine-readable format. Finally, the ability to download files in bulk—either by year or table number—significantly enhances the user experience.
+- Scrapes Digest table indexes for selected years.
+- Filters by year, table number, or custom combinations.
+- Extracts direct Excel links with fallback URL construction.
+- Downloads files with retries, throttling, and integrity checks.
+- Records hash and download metadata for change tracking.
+- Supports parallel processing with conservative defaults.
 
-This tool is designed for Digest users of all levels. Please share your feedback or report any defects or feature requests using the issues log on GitHub.
+## Architecture Summary
 
-## Quick Start
+```text
+main.R
+  |
+  +-- R/config.R              # config loading and validation
+  +-- R/utils.R               # retries, filesystem, hashing helpers
+  +-- code/URL_DIGEST.R       # scrape table catalog by digest year
+  +-- code/find_excel_path.R  # resolve table -> excel URL
+  +-- code/download_files.R   # download, verify, and log artifacts
 
-### First-time Setup
-
-1. Make sure you have R installed on your computer (version 3.6 or higher).
-2. Download or clone this repository.
-3. Run the setup script to install the required packages:
-   ```bash
-   Rscript install_dependencies.R
-   ```
-
-### Running the Downloader
-
-1. Edit the configuration in `main.R` to select which years you want to download.
-2. Run the main script:
-   ```bash
-   Rscript main.R
-   ```
-3. The downloaded files will be saved in the `output` directory.
-4. Download logs will be saved in the `log` directory.
-
-## Configuration Options
-
-You can customize the downloader by editing the variables at the top of `main.R`:
-
-```r
-# Years to download (e.g., 24 = 2024, 23 = 2023, etc.)
-YEARS_TO_DOWNLOAD <- c(24)
-
-# Download mode:
-# "all"        - Download all tables for the specified years
-# "year_only"  - Only tables from specified years (default)
-# "table_only" - Only specified tables (regardless of year)
-# "custom"     - Both year and table filters applied
-DOWNLOAD_MODE <- "year_only"
-
-# When DOWNLOAD_MODE is "table_only" or "custom", specify table numbers
-# e.g., c("101.10", "204.30") for specific tables
-FILTER_TABLES <- c()
-
-# Maximum number of simultaneous downloads (0 = auto-detect based on system)
-MAX_PARALLEL_DOWNLOADS <- 0
+Outputs:
+  output/                     # downloaded Excel files
+  log/                        # download logs + hash registry
 ```
 
-You can also run the script with command-line arguments:
+## Prerequisites
+
+- macOS, Linux, or Windows
+- R >= 4.1.0
+- Internet access for NCES downloads (runtime)
+- Optional for docs contributors:
+  - Python 3.10+
+  - `mkdocs`
+
+## Install
+
 ```bash
-Rscript main.R --years 24,23 --mode year_only --output custom_folder
+git clone https://github.com/joshdelarosa1/nces-digest-downloader.git
+cd nces-digest-downloader
+Rscript install_dependencies.R
 ```
 
-## Download Structure
+## Quickstart
 
-The downloaded files are organized into a directory structure by year, chapter, and subchapter:
-```
-output/
-├── d24/                           # Year (2024)
-│   ├── chapter_1/                 # Chapter 1
-│   │   ├── subchapter_101/        # Subchapter 101
-│   │   │   ├── d24_tabn101_10.xlsx
-│   │   │   └── d24_tabn101_20.xlsx
-│   │   ├── subchapter_102/
-│   │   └── ...
-│   ├── chapter_2/
-│   └── ...
-├── d23/                           # Year (2023)
-└── ...
+Run with defaults:
+
+```bash
+Rscript main.R
 ```
 
-## File Hash Registry
+Run with explicit parameters:
 
-The program maintains a registry of file hashes in `log/hash_registry.csv` to track changes in files over time. This registry includes:
-- File paths
-- MD5 hashes
-- Download dates
-- Timestamps
-
-## Project Structure
-
-```
-.
-├── R/                      # Core utility functions
-│   ├── config.R            # Configuration handling
-│   └── utils.R             # Helper functions
-├── code/                   # Main processing scripts
-│   ├── URL_DIGEST.R        # Scrapes the Digest menu
-│   ├── download_files.R    # Downloads Excel files
-│   └── find_excel_path.R   # Extracts Excel links
-├── main.R                  # Main script (edit this)
-├── install_dependencies.R  # Package installer
-├── log/                    # Download logs (auto-created)
-└── output/                 # Downloaded files (auto-created)
+```bash
+Rscript main.R \
+  --years 24,23 \
+  --mode custom \
+  --tables 101.10,204.30 \
+  --parallel 2 \
+  --output output
 ```
 
-## Responsible Use
+## Usage Examples
 
-This tool is designed for ethical and responsible data download. **Users are responsible for:**
-- Ensuring that their use of the tool complies with the [NCES terms of service](https://nces.ed.gov/programs/digest/).
-- Using the recommended configuration settings (especially throttling and parallel download limits) to avoid overloading the NCES servers.
-- Modifying download parameters only after careful consideration and documenting any changes.
+Download all tables for one year:
+
+```bash
+Rscript main.R --years 24 --mode year_only
+```
+
+Download specific tables across available years:
+
+```bash
+Rscript main.R --mode table_only --tables 101.10,204.30
+```
+
+## Configuration and Environment Variables
+
+Primary configuration is defined in `main.R` defaults and optional CLI flags.
+You can also pass a YAML config path where supported by your workflow.
+
+| Setting | Purpose | Default |
+|---|---|---|
+| `years` | Two-digit digest years to process | `c(22)` |
+| `filter_mode` | `all`, `year_only`, `table_only`, `custom` | `year_only` |
+| `filter_years` | Year filters with `d` prefix | from `years` |
+| `filter_tables` | Specific table IDs | empty |
+| `max_parallel` | Parallel worker count (`0` = auto) | `0` |
+| `output_dir` | Download target directory | `output` |
+| `log_dir` | Log output directory | `log` |
+| `resume_previous` | Resume behavior for existing artifacts | `TRUE` |
+| `verbose` | Verbose messaging | `FALSE` |
+
+Environment variables:
+
+- Copy `.Renviron.example` to `.Renviron` and set local values.
+- Runtime config is read with `Sys.getenv()` via `get_env()` in `R/config.R`.
+- Keep `.Renviron` and `.env*` local only; they are ignored by Git.
+
+Example local setup:
+
+```bash
+cp .Renviron.example .Renviron
+echo 'NCES_BASE_URL=https://nces.ed.gov/programs/digest/' >> .Renviron
+```
 
 ## Troubleshooting
 
-### Common Issues
+### Missing packages
 
-1. **Missing Packages:**  
-   Run `Rscript install_dependencies.R` to install all required packages.
+Run:
 
-2. **Download Failures:**  
-   Some tables might not have associated Excel files available. Check the download log for details.
+```bash
+Rscript install_dependencies.R
+```
 
-3. **Permission Errors:**  
-   Ensure you have write permissions for the `output` and `log` directories.
+### Download failures
 
-4. **Parallel Processing Errors:**  
-   The tool uses sequential processing by default for reliability. If you encounter errors with parallel processing, edit `download_files.R` and ensure `worker_count` is set to 1.
+- Some table pages do not expose valid Excel links.
+- Review `log/download_log_*.csv` and retry with lower parallelism.
 
-5. **Handler Errors:**  
-   If you see a "handlers on the stack" error, ensure that `progressr` is not loaded in your R environment. The tool has been updated to avoid dependencies on progressr.
+### Permission errors
 
-## Log Files
+- Ensure write permissions to `output/` and `log/`.
 
-Detailed logs are saved in the `log` directory:
-- `download_log_YYYYMMDD_HHMMSS.csv` – Information about each download attempt.
-- `hash_registry.csv` – Registry of file hashes for change tracking.
+### Unexpected HTML instead of Excel
 
-## About NCES Digest Data
+- The downloader validates content size and file signatures.
+- Check network restrictions and NCES availability.
 
-The [Digest of Education Statistics](https://nces.ed.gov/programs/digest/) provides a comprehensive compilation of statistical information covering education from kindergarten through graduate school, including data on enrollment, graduates, teachers, finances, and more.
+## FAQ
 
-## Disclaimer
+### Does this project support offline data downloads?
+No. NCES data retrieval requires network access.
 
-This tool is not affiliated with or endorsed by the National Center for Education Statistics. Use of this tool should comply with NCES terms of service.
+### Can documentation be built offline?
+Yes. After installing docs tooling once, docs generation/build checks run without network calls.
+
+### Which changelog is canonical?
+`CHANGELOG.md` is canonical. `NEWS.md` is retained as legacy history.
+
+## Documentation
+
+- Docs source: `docs/`
+- Site config: `mkdocs.yml`
+- Migration note: `docs/migration-note.md`
+
+Build docs locally:
+
+```bash
+Rscript scripts/generate_reference_docs.R
+mkdocs build --strict
+```
+
+## Security
+
+Run local security scans before opening a PR:
+
+```bash
+scripts/scan_secrets.sh
+Rscript scripts/scan_code.R
+```
+
+Disclosure summary:
+
+- Do not report vulnerabilities in public issues.
+- Use the private reporting workflow in `SECURITY.md`.
+- Include impact, repro steps, and affected versions.
+
+## Support
+
+- Bugs and feature requests: GitHub Issues
+- Security reports: see `SECURITY.md`
+- Contributor workflow: see `CONTRIBUTING.md`
 
 ## License
 
-This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
+Licensed under the MIT License. See `LICENSE`.
+
+## Acknowledgements
+
+- National Center for Education Statistics (NCES)
+- R package ecosystem maintainers (tidyverse, httr, rvest, furrr, and related packages)

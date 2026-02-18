@@ -1,36 +1,12 @@
 #!/usr/bin/env Rscript
-# =============================================================================
-# NCES Digest Data Downloader
-# =============================================================================
-# Purpose: Downloads Excel files from the NCES Digest of Education Statistics
-#          with customizable filtering and parallel processing capabilities.
-#
-# Version: 1.1.0
-# Last Update: 2025-04-01
-# Author: Josh DeLaRosa
-#
-#!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
-# File: find_excel_path.R
+# Script: main.R
+# Purpose: Orchestrate the NCES Digest download workflow from configuration to
+#          table discovery, link extraction, and file download logging.
+# Notes: Primary CLI entrypoint for users.
 # -----------------------------------------------------------------------------
-# Purpose: Enhanced extraction of Excel download links with improved parallelism
-#          and error handling. This script applies filtering based on user 
-#          configuration and extracts download links from table pages.
 #
-# Version: 1.1.0
-# Last Update: 2025-04-01
-# Author: Josh DeLaRosa
-#
-# Change Log:
-# 2025-04-01: v1.0.1 - Added validation for invalid or missing URLs
-#                     - Implemented direct URL construction as fallback
-#                     - Enhanced batch processing with better error handling
-#                     - Added seed consistency for parallel processing
-# 2023-03-15: v1.0.0 - Initial release
-#
-# Usage: This script is called from main.R and should not be run directly.
-#
-# Usage (from command line):
+# Usage:
 #   Rscript main.R [options]
 #
 # Options:
@@ -50,7 +26,7 @@
 # ===== USER CONFIGURATION (EDIT THESE VALUES) =====
 
 # Years to download (e.g., 24 = 2024, 23 = 2023, etc.)
-YEARS_TO_DOWNLOAD <- c(22)
+YEARS_TO_DOWNLOAD <- c(25)
 
 # Download mode:
 # "all"        - Download all tables for the specified years
@@ -87,7 +63,9 @@ VERBOSE <- FALSE
 
 # ===== DO NOT EDIT BELOW THIS LINE =====
 
-# Process command line arguments if provided
+#' Parse supported command line flags and update runtime configuration globals.
+#'
+#' @return `NULL`; updates global config variables by side effect.
 parse_command_line_args <- function() {
   args <- commandArgs(trailingOnly = TRUE)
   
@@ -189,7 +167,11 @@ config <- list(
   verbose = VERBOSE
 )
 
-# Function to display a formatted message
+#' Emit a formatted status message for CLI output.
+#'
+#' @param text Message content.
+#' @param type Message type key (`info`, `success`, `warn`, `error`, `progress`).
+#' @return `NULL`.
 msg <- function(text, type = "info") {
   prefix <- switch(type,
                    "info" = "ℹ️ ",
@@ -202,7 +184,10 @@ msg <- function(text, type = "info") {
   cat(paste0(prefix, text, "\n"))
 }
 
-# Function to check for required packages and install if needed
+#' Validate required package availability and optionally install missing ones.
+#'
+#' @param packages Character vector of package names.
+#' @return `NULL`; throws on unresolved package dependencies.
 check_packages <- function(packages) {
   new_packages <- packages[!sapply(packages, requireNamespace, quietly = TRUE)]
   
@@ -238,7 +223,9 @@ check_packages <- function(packages) {
   }
 }
 
-# Create necessary directories
+#' Ensure output and log directories exist.
+#'
+#' @return `NULL`.
 setup_directories <- function() {
   for (dir in c(config$output_dir, config$log_dir)) {
     if (!dir.exists(dir)) {
@@ -251,7 +238,10 @@ setup_directories <- function() {
 # Check if we're running in RStudio or terminal
 is_rstudio <- Sys.getenv("RSTUDIO") == "1"
 
-# Define script locations with flexible paths
+#' Resolve script path across common repository subdirectories.
+#'
+#' @param script_name Script filename to resolve.
+#' @return Character path to the first matching script candidate.
 find_script_path <- function(script_name) {
   # Try different common locations
   possible_paths <- c(
@@ -271,31 +261,9 @@ find_script_path <- function(script_name) {
   return(possible_paths[1])
 }
 
-# Display a simple text-based progress bar
-simple_progress_bar <- function(current, total, width = 50) {
-  progress <- current / total
-  filled <- round(width * progress)
-  empty <- width - filled
-  
-  bar <- paste0(
-    "[", 
-    paste(rep("=", filled), collapse = ""),
-    paste(rep(" ", empty), collapse = ""),
-    "] ",
-    sprintf("%d%%", round(progress * 100)),
-    " (", current, "/", total, ")"
-  )
-  
-  # Clear line and print new progress
-  cat("\r", bar, sep = "")
-  
-  # If done, add newline
-  if (current >= total) {
-    cat("\n")
-  }
-}
-
-# Main execution flow
+#' Execute end-to-end digest scraping, link extraction, and download workflow.
+#'
+#' @return `NULL`; emits status logs and writes output/log artifacts.
 main <- function() {
   # Display banner
   cat("\n")
@@ -304,9 +272,9 @@ main <- function() {
   cat("└─────────────────────────────────────────────────┘\n\n")
   
   # Check required packages - removing progressr from the list
-  required_packages <- c("httr", "rvest", "dplyr", "stringr", "purrr", 
-                         "tibble", "glue", "furrr", "fs", "digest", 
-                         "future", "yaml")
+  required_packages <- c("httr", "rvest", "dplyr", "stringr", "purrr",
+                         "tibble", "glue", "furrr", "fs", "digest",
+                         "future", "yaml", "xml2", "progressr")
   
   msg("Checking required packages...", "info")
   check_packages(required_packages)
@@ -359,8 +327,9 @@ main <- function() {
   }
   msg(paste0("Using ", config$max_parallel, " parallel processes for downloads"), "info")
   
-  # Set up parallel backend
+  # Set up parallel backend; ensure workers are released when main() exits.
   future::plan(future::multisession, workers = config$max_parallel, .options = furrr::furrr_options(seed = TRUE))
+  on.exit(future::plan(future::sequential), add = TRUE)
   
   # Step 1: Scrape the digest menu to find tables
   msg("Step 1/3: Scraping digest menus for available tables...", "progress")

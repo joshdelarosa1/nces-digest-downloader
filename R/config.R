@@ -1,20 +1,61 @@
 # -----------------------------------------------------------------------------
-# File: config.R
-# Description: Simplified configuration system for the NCES Digest downloader.
-#              Provides a clean interface for loading and validating user settings.
-#
-# Version: 1.0.0
+# Module: R/config.R
+# Purpose: Central configuration defaults and validation for downloader runtime.
+# Notes: This file defines canonical config keys shared by main orchestration
+#        and downstream scripts.
 # -----------------------------------------------------------------------------
 
-#' Load Configuration
+#' Read environment variable with optional required/default behavior.
 #'
-#' Reads configuration either from environment variables, a YAML file,
-#' or from the provided defaults.
+#' @param name Environment variable key.
+#' @param required Whether missing values should throw an error.
+#' @param default Optional fallback value for empty/missing values.
 #'
-#' @param config_path Path to configuration YAML file (optional).
-#' @param config_env Environment containing configuration variables (optional).
+#' @return Character scalar value.
+get_env <- function(name, required = TRUE, default = NULL) {
+  env_value <- Sys.getenv(name, unset = "")
+  if (nzchar(env_value)) {
+    return(env_value)
+  }
+
+  if (!is.null(default)) {
+    return(default)
+  }
+
+  if (isTRUE(required)) {
+    stop("Missing required environment variable: ", name, call. = FALSE)
+  }
+
+  ""
+}
+
+# Shared constant: base URL for all NCES Digest endpoints.
+# Defined here so every sourced script picks it up from one place.
+NCES_BASE_URL <- get_env(
+  name = "NCES_BASE_URL",
+  required = FALSE,
+  default = "https://nces.ed.gov/programs/digest/"
+)
+
+# Canonical list of user-facing config field names.
+# Add a new field here and it automatically flows through load_config(),
+# the YAML loader, validate_config(), and create_config_env().
+CONFIG_FIELDS <- c(
+  "years", "filter_mode", "filter_years", "filter_tables",
+  "max_parallel", "output_dir", "log_dir", "resume_previous", "verbose",
+  # Network tuning — override via YAML if you need to be more conservative
+  "max_retries", "initial_delay", "max_delay", "min_dl_delay"
+)
+
+#' Load Downloader Configuration
 #'
-#' @return A list with validated configuration settings.
+#' Reads configuration values from defaults, an optional compatibility
+#' environment, and an optional YAML file.
+#'
+#' @param config_path Optional path to a YAML configuration file.
+#' @param config_env Optional environment containing compatibility variables.
+#'
+#' @return A validated list of configuration settings.
 load_config <- function(config_path = NULL, config_env = NULL) {
   # Start with default configuration
   config <- list(
@@ -26,77 +67,33 @@ load_config <- function(config_path = NULL, config_env = NULL) {
     output_dir = "output",            # Default output directory
     log_dir = "log",                  # Default log directory
     resume_previous = TRUE,           # Default to resuming
-    verbose = FALSE                   # Default to minimal logging
+    verbose = FALSE,                  # Default to minimal logging
+    # Network tuning (override via YAML to be more/less aggressive)
+    max_retries   = 5L,               # Retry attempts for HTTP requests
+    initial_delay = 1,                # Initial backoff delay in seconds
+    max_delay     = 30,               # Maximum backoff delay in seconds
+    min_dl_delay  = 3                 # Minimum seconds between downloads
   )
 
   # Check if config_env is provided and override defaults
   if (!is.null(config_env)) {
-    # Transfer variables from config_env to config list
-    if (exists("years", envir = config_env))
-      config$years <- get("years", envir = config_env)
-
-    if (exists("filter_mode", envir = config_env))
-      config$filter_mode <- get("filter_mode", envir = config_env)
-
-    if (exists("filter_years", envir = config_env))
-      config$filter_years <- get("filter_years", envir = config_env)
-
-    if (exists("filter_tables", envir = config_env))
-      config$filter_tables <- get("filter_tables", envir = config_env)
-
-    if (exists("max_parallel", envir = config_env))
-      config$max_parallel <- get("max_parallel", envir = config_env)
-
-    if (exists("output_dir", envir = config_env))
-      config$output_dir <- get("output_dir", envir = config_env)
-
-    if (exists("log_dir", envir = config_env))
-      config$log_dir <- get("log_dir", envir = config_env)
-
-    if (exists("resume_previous", envir = config_env))
-      config$resume_previous <- get("resume_previous", envir = config_env)
-
-    if (exists("verbose", envir = config_env))
-      config$verbose <- get("verbose", envir = config_env)
+    for (field in CONFIG_FIELDS) {
+      if (exists(field, envir = config_env))
+        config[[field]] <- get(field, envir = config_env)
+    }
   }
 
   # Check if config_path is provided and exists
   if (!is.null(config_path) && file.exists(config_path)) {
     tryCatch({
-      # Load YAML configuration
       yaml_config <- yaml::read_yaml(config_path)
-
-      # Override defaults with YAML values
-      if (!is.null(yaml_config$years))
-        config$years <- yaml_config$years
-
-      if (!is.null(yaml_config$filter_mode))
-        config$filter_mode <- yaml_config$filter_mode
-
-      if (!is.null(yaml_config$filter_years))
-        config$filter_years <- yaml_config$filter_years
-
-      if (!is.null(yaml_config$filter_tables))
-        config$filter_tables <- yaml_config$filter_tables
-
-      if (!is.null(yaml_config$max_parallel))
-        config$max_parallel <- yaml_config$max_parallel
-
-      if (!is.null(yaml_config$output_dir))
-        config$output_dir <- yaml_config$output_dir
-
-      if (!is.null(yaml_config$log_dir))
-        config$log_dir <- yaml_config$log_dir
-
-      if (!is.null(yaml_config$resume_previous))
-        config$resume_previous <- yaml_config$resume_previous
-
-      if (!is.null(yaml_config$verbose))
-        config$verbose <- yaml_config$verbose
-
-      message("✅ Loaded configuration from: ", config_path)
+      for (field in CONFIG_FIELDS) {
+        if (!is.null(yaml_config[[field]]))
+          config[[field]] <- yaml_config[[field]]
+      }
+      message("Loaded configuration from: ", config_path)
     }, error = function(e) {
-      warning("⚠️ Error loading config file: ", e$message,
+      warning("Error loading config file: ", e$message,
               ". Using default/environment values.")
     })
   }
@@ -107,14 +104,14 @@ load_config <- function(config_path = NULL, config_env = NULL) {
   return(config)
 }
 
-#' Validate Configuration
+#' Validate Downloader Configuration
 #'
-#' Checks configuration values and ensures they are valid,
-#' applying corrections if needed.
+#' Ensures configuration values are usable and applies safe coercions when
+#' possible.
 #'
 #' @param config Configuration list to validate.
 #'
-#' @return Validated and corrected configuration list.
+#' @return A validated and corrected configuration list.
 validate_config <- function(config) {
   # Validate years (must be numeric)
   if (!is.numeric(config$years)) {
@@ -138,9 +135,13 @@ validate_config <- function(config) {
 
   # Ensure filter_years has 'd' prefix
   if (length(config$filter_years) > 0) {
-    config$filter_years <- sapply(config$filter_years, function(y) {
-      if (!grepl("^d", y)) paste0("d", y) else y
-    })
+    config$filter_years <- unname(vapply(
+      config$filter_years,
+      function(single_year) {
+        if (!grepl("^d", single_year)) paste0("d", single_year) else single_year
+      },
+      FUN.VALUE = character(1)
+    ))
   } else if (config$filter_mode %in% c("year_only", "custom")) {
     # Auto-generate filter_years from years if needed
     config$filter_years <- paste0("d", config$years)
@@ -175,30 +176,18 @@ validate_config <- function(config) {
   return(config)
 }
 
-#' Create Configuration Environment
+#' Create Compatibility Configuration Environment
 #'
-#' Creates an environment with configuration settings for use in scripts
-#' that expect a config_env environment.
+#' Creates an environment with configuration values for scripts that expect
+#' `config_env` instead of a list object.
 #'
 #' @param config Configuration list.
 #'
 #' @return An environment containing configuration variables.
 create_config_env <- function(config) {
-  # Create a new environment
   env <- new.env()
-
-  # Add configuration values to environment
-  env$years <- config$years
-  env$filter_mode <- config$filter_mode
-  env$filter_years <- config$filter_years
-  env$filter_tables <- config$filter_tables
-  env$max_parallel <- config$max_parallel
-  env$output_dir <- config$output_dir
-  env$log_dir <- config$log_dir
-  env$resume_previous <- config$resume_previous
-  env$verbose <- config$verbose
-
-  return(env)
+  for (field in CONFIG_FIELDS) env[[field]] <- config[[field]]
+  env
 }
 
 # Export the config_env globally when this script is sourced

@@ -1,33 +1,22 @@
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
-# File: install_dependencies.R
+# Script: install_dependencies.R
 # -----------------------------------------------------------------------------
-# Purpose: Helper script to install all required packages for the
-#          NCES Digest downloader. Designed to be run standalone
-#          by novice users who need to set up their environment.
-#
-# Version: 1.1.0
-# Last Update: 2025-04-01
-# Author: Josh DeLaRosa
-#
-# Change Log:
-# 2025-04-01: v1.0.1 - Added curl package as a required dependency for improved
-#                       session-based downloads and HTTP handling
-# 2023-03-15: v1.0.0 - Initial release
-#
+# Purpose: Install required R packages for downloader execution and supporting
+#          development tasks.
+# Notes: Intended for first-time environment setup.
 # Usage: Rscript install_dependencies.R
-#
-# Description:
-# This script checks for and installs all the required R packages needed
-# to run the NCES Digest data downloader. It provides user-friendly prompts
-# and detailed status messages throughout the installation process.
 
 cat("\n")
 cat("┌─────────────────────────────────────────────────┐\n")
 cat("│       NCES DIGEST DOWNLOADER - SETUP            │\n")
 cat("└─────────────────────────────────────────────────┘\n\n")
 
-# Function to display a formatted message
+#' Emit a formatted setup message for CLI output.
+#'
+#' @param text Message content.
+#' @param type Message type (`info`, `success`, `warn`, `error`).
+#' @return `NULL`.
 msg <- function(text, type = "info") {
   prefix <- switch(type,
                   "info" = "ℹ️ ",
@@ -38,9 +27,6 @@ msg <- function(text, type = "info") {
 
   cat(paste0(prefix, text, "\n"))
 }
-
-# Update the required_packages list in install_dependencies.R
-# by adding the curl package:
 
 required_packages <- c(
   # Core packages

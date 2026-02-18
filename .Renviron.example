@@ -1,0 +1,9 @@
+# NCES digest downloader environment template
+# Copy to .Renviron and set local values as needed.
+
+# Optional override for NCES endpoint.
+NCES_BASE_URL=https://nces.ed.gov/programs/digest/
+
+# Optional runtime tuning.
+NCES_OUTPUT_DIR=output
+NCES_LOG_DIR=log

@@ -1,0 +1,6 @@
+# TODO: Replace with your org/team handles before public release.
+* @TODO-OWNER
+
+# Security policy and CI ownership
+SECURITY.md @TODO-OWNER
+.github/workflows/* @TODO-OWNER

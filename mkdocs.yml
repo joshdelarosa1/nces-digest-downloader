@@ -1,0 +1,25 @@
+site_name: NCES Digest Downloader
+site_description: Documentation for the NCES Digest Downloader project
+site_url: https://github.com/joshdelarosa1/nces-digest-downloader
+repo_url: https://github.com/joshdelarosa1/nces-digest-downloader
+repo_name: joshdelarosa1/nces-digest-downloader
+
+theme:
+  name: mkdocs
+
+docs_dir: docs
+site_dir: site
+strict: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - How-To Guides: how-to.md
+  - Reference:
+      - API and Scripts: reference/index.md
+  - Design:
+      - Architecture: design/architecture.md
+  - Operations:
+      - Runbook: operations/runbook.md
+  - Release Process: release-process.md
+  - Migration Note: migration-note.md

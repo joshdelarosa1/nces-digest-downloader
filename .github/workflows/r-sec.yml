@@ -1,0 +1,136 @@
+name: r-sec
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detect-stack:
+    runs-on: ubuntu-latest
+    outputs:
+      has_description: ${{ steps.scan.outputs.has_description }}
+      has_namespace: ${{ steps.scan.outputs.has_namespace }}
+      has_dockerfile: ${{ steps.scan.outputs.has_dockerfile }}
+      has_non_r_code: ${{ steps.scan.outputs.has_non_r_code }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: scan
+        run: |
+          [ -f DESCRIPTION ] && echo "has_description=true" >> "$GITHUB_OUTPUT" || echo "has_description=false" >> "$GITHUB_OUTPUT"
+          [ -f NAMESPACE ] && echo "has_namespace=true" >> "$GITHUB_OUTPUT" || echo "has_namespace=false" >> "$GITHUB_OUTPUT"
+          ls Dockerfile* >/dev/null 2>&1 && echo "has_dockerfile=true" >> "$GITHUB_OUTPUT" || echo "has_dockerfile=false" >> "$GITHUB_OUTPUT"
+          if find . -type f \\( -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.go' -o -name '*.java' \\) | grep -q .; then
+            echo "has_non_r_code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_non_r_code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  r-cmd-check:
+    needs: detect-stack
+    if: needs.detect-stack.outputs.has_description == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+      - name: Run R CMD check
+        if: needs.detect-stack.outputs.has_namespace == 'true'
+        uses: r-lib/actions/check-r-package@v2
+      - name: Skip R CMD check (no NAMESPACE)
+        if: needs.detect-stack.outputs.has_namespace != 'true'
+        run: echo "DESCRIPTION exists, but NAMESPACE is missing. Skipping package check."
+
+  lintr:
+    needs: detect-stack
+    if: needs.detect-stack.outputs.has_description == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::lintr
+      - name: Run lintr
+        run: |
+          Rscript -e 'paths <- unique(c(list.files(".", pattern="\\.R$", recursive=FALSE, full.names=TRUE), list.files("R", pattern="\\.R$", recursive=TRUE, full.names=TRUE), list.files("code", pattern="\\.R$", recursive=TRUE, full.names=TRUE), list.files("tests", pattern="\\.R$", recursive=TRUE, full.names=TRUE))); if (length(paths) == 0) { message("No R files found"); quit(status = 0) }; lint_out <- lintr::lint(paths); if (length(lint_out) > 0) print(lint_out)'
+
+  secrets:
+    needs: detect-stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install detect-secrets
+        run: python -m pip install --upgrade detect-secrets
+      - name: Run detect-secrets on changed files
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --name-only origin/${{ github.base_ref }}...HEAD > changed_files.txt
+          else
+            git diff --name-only ${{ github.event.before }}...${{ github.sha }} > changed_files.txt
+          fi
+          if [[ -s changed_files.txt ]]; then
+            detect-secrets-hook --baseline .secrets.baseline $(cat changed_files.txt)
+          else
+            echo "No changed files to scan"
+          fi
+      - name: Run gitleaks full-history
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.2/gitleaks_8.24.2_linux_x64.tar.gz | tar -xz
+          ./gitleaks git --redact --no-banner --config .gitleaks.toml
+
+  yamllint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade yamllint
+      - run: yamllint .
+
+  docker-security:
+    needs: detect-stack
+    if: needs.detect-stack.outputs.has_dockerfile == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+      - name: Build image
+        run: docker build -t local/r-sec:latest -f Dockerfile .
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: local/r-sec:latest
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+
+  codeql:
+    needs: detect-stack
+    if: needs.detect-stack.outputs.has_non_r_code == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        language: ["javascript-typescript", "python"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+      - uses: github/codeql-action/analyze@v3

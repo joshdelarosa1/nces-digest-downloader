@@ -1,25 +1,15 @@
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
-# File: update_project_metadata.R
+# Script: update_project_metadata.R
 # -----------------------------------------------------------------------------
-# Purpose: Automate the update of project metadata across various project artifacts.
-#
-# This script reads metadata from a centralized YAML file (e.g., project_config.yml)
-# and updates the following:
-#
-#   1. DESCRIPTION file (if it exists) using the desc package.
-#   2. R script headers for:
-#        - main.R
-#        - install_dependencies.R
-#        - URL_DIGEST.R
-#        - find_excel_path.R
-#        - download_files.R
-#        - utils.R
-#   3. README.md to include the new version and release notes.
-#   4. Optionally, creates an annotated Git tag for the new release (using usethis or system call).
-#
+# Purpose: Update version metadata across project artifacts from
+#          `project_config.yml`.
+# Notes:
+#   - Updates DESCRIPTION version.
+#   - Updates selected script header metadata fields.
+#   - Updates README metadata block.
+#   - Optionally creates an annotated Git tag.
 # Usage: Rscript update_project_metadata.R
-#
 # -----------------------------------------------------------------------------
 
 # Load required libraries
@@ -64,6 +54,10 @@ message("  Project Name: ", project_name)
 # STEP 2: Update DESCRIPTION File with the New Version
 # -----------------------------------------------------------------------------
 
+#' Update DESCRIPTION version field.
+#'
+#' @param new_version New semantic version string.
+#' @return `NULL`.
 update_description <- function(new_version) {
   desc_file <- "DESCRIPTION"
   if (file.exists(desc_file)) {
@@ -93,7 +87,13 @@ r_files <- c("main.R",
              "code/download_files.R", 
              "R/utils.R")
 
-# Function to update header lines in an R script file
+#' Update script header metadata lines.
+#'
+#' @param file_path Script path to update.
+#' @param new_version New semantic version string.
+#' @param new_release_date Release date string.
+#' @param new_author Author display name.
+#' @return `NULL`.
 update_script_header <- function(file_path, new_version, new_release_date, new_author) {
   if (!file.exists(file_path)) {
     message(paste("File not found:", file_path))
@@ -137,6 +137,12 @@ for (file in r_files) {
 # STEP 4: Update README.md with New Version and Changelog
 # -----------------------------------------------------------------------------
 
+#' Update project metadata block in README.
+#'
+#' @param new_version New semantic version string.
+#' @param new_release_date Release date string.
+#' @param new_changelog Changelog text for metadata block.
+#' @return `NULL`.
 update_readme <- function(new_version, new_release_date, new_changelog) {
   readme_file <- "README.md"
   if (!file.exists(readme_file)) {
@@ -191,6 +197,12 @@ update_readme(version, release_date, changelog)
 # STEP 5: Optionally Create an Annotated Git Tag for the New Release
 # -----------------------------------------------------------------------------
 
+#' Create an annotated Git tag for release metadata.
+#'
+#' @param new_version New semantic version string.
+#' @param new_release_date Release date string.
+#' @param new_changelog Changelog text to include in tag message.
+#' @return `NULL`.
 create_git_release_tag <- function(new_version, new_release_date, new_changelog) {
   # Check for a .git directory to confirm that Git is initialized
   if (!dir.exists(".git")) {
@@ -211,10 +223,17 @@ create_git_release_tag <- function(new_version, new_release_date, new_changelog)
     message("Error creating Git tag with usethis: ", e$message)
     message("Attempting to create Git tag using system command...")
     
-    # Fallback: use a system call to git
-    cmd <- sprintf('git tag -a %s -m "%s"', tag_name, tag_message)
-    system(cmd)
-    message("Git tag created using system command.")
+    # Fallback: invoke git directly without shell interpolation.
+    status <- system2(
+      "git",
+      c("tag", "-a", tag_name, "-m", tag_message),
+      stdout = TRUE,
+      stderr = TRUE
+    )
+    if (!is.null(attr(status, "status")) && attr(status, "status") != 0) {
+      stop("Git tag creation failed in fallback path.")
+    }
+    message("Git tag created using system2 fallback.")
   })
 }
 

@@ -1,42 +1,20 @@
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
-# File: URL_DIGEST.R
+# Script: code/URL_DIGEST.R
 # -----------------------------------------------------------------------------
-# Purpose: Enhanced web scraping of NCES Digest table metadata with improved error
-#          handling and parallelism. This script identifies available tables for each
-#          digest year and extracts key metadata.
-#
-# Version: 1.1.0
-# Last Update: 2025-04-01
-# Author: Josh DeLaRosa
-#
-# Change Log:
-# 2025-04-01: v1.0.1 - Added seed consistency for parallel processing to ensure
-#                       reproducible results and prevent potential errors from
-#                       the furrr package's worker processes
-# 2023-03-15: v1.0.0 - Initial release
-#
-# Usage: This script is called from main.R and should not be run directly.
+# Purpose: Discover NCES Digest table pages for configured years and produce a
+#          normalized table catalog for downstream link extraction.
+# Notes: This script is sourced by `main.R` and is not intended as a standalone
+#        entrypoint.
 
-# ---- Load Libraries ----
-suppressPackageStartupMessages({
-  library(rvest)      # For web scraping
-  library(dplyr)      # For data manipulation
-  library(purrr)      # For functional programming
-  library(furrr)      # For parallel processing
-  library(stringr)    # For string manipulation
-  library(glue)       # For string interpolation
-  library(tibble)     # For tibble data frames
-  library(httr)       # For HTTP requests
-})
 
-# Define the base URL template for NCES Digest menu pages
-base_url <- "https://nces.ed.gov/programs/digest/20%02dmenu_tables.asp"
+# Define the base URL template for NCES Digest menu pages (uses NCES_BASE_URL from config.R)
+base_url <- paste0(NCES_BASE_URL, "20%02dmenu_tables.asp")
 
-#' Extract Digest Table Metadata with Improved Error Handling
+#' Extract Digest Table Metadata
 #'
-#' Scrapes the NCES Digest menu page for a specified year, extracting
-#' table metadata with comprehensive error handling and validation.
+#' Scrapes one digest menu page and returns structured table metadata with
+#' defensive error handling.
 #'
 #' @param year_short A numeric value representing the two-digit digest year.
 #'
@@ -101,8 +79,8 @@ extract_digest_tables <- function(year_short) {
     # Get href attribute
     href <- rvest::html_attr(a, "href")
     
-    # Construct full URL
-    table_url <- paste0("https://nces.ed.gov/programs/digest/", href)
+    # Construct full URL (uses NCES_BASE_URL from config.R)
+    table_url <- paste0(NCES_BASE_URL, href)
     
     # Extract table numbers using regex patterns
     table_number <- stringr::str_extract(href, "\\d{3}\\.\\d{2}")
@@ -129,9 +107,10 @@ extract_digest_tables <- function(year_short) {
   return(result_df)
 }
 
-#' Extract Page Titles in Parallel
+#' Enrich Table Metadata with Page Titles
 #'
-#' Enhances the table metadata by fetching actual page titles in parallel batches.
+#' Fetches table page titles in batches to improve table labels while keeping
+#' controlled parallelism.
 #'
 #' @param tables_df Tibble with table metadata.
 #' @param batch_size Number of pages to process in each batch.
@@ -211,7 +190,7 @@ all_tables_raw <- furrr::future_map_dfr(
 message("Enhancing tables with page titles...")
 all_tables <- enhance_with_page_titles(
   all_tables_raw,
-  batch_size = min(10, max(1, config$max_parallel / 2))
+  batch_size = min(10, max(1, config$max_parallel))
 )
 
 # Message about results

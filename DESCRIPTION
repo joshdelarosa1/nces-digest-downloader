@@ -3,6 +3,8 @@ Title: NCES Digest Table Downloader
 Version: 1.1.0
 Authors@R:
     person("Josh", "De La Rosa", email = "josh.delarosa1@gmail.com", role = c("aut", "cre"))
+Author: Josh De La Rosa [aut, cre]
+Maintainer: Josh De La Rosa <josh.delarosa1@gmail.com>
 Description: Downloads and manages Excel tables from the NCES Digest of Education Statistics.
     Includes scraping, metadata extraction, logging, and file verification.
     Implements robust error handling and parallelization for reproducible workflows.
@@ -17,11 +19,19 @@ Imports:
     purrr,
     stringr,
     furrr,
+    future,
     glue,
+    parallel,
+    progressr,
     rvest,
     tibble,
     fs,
     digest,
     xml2,
     readr,
-    readxl
+    readxl,
+    yaml
+Suggests:
+    testthat (>= 3.0.0),
+    withr,
+    here

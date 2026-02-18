@@ -1,43 +1,16 @@
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
-# File: find_excel_path.R
+# Script: code/find_excel_path.R
 # -----------------------------------------------------------------------------
-# Purpose: Enhanced extraction of Excel download links with improved parallelism
-#          and error handling. This script applies filtering based on user 
-#          configuration and extracts download links from table pages.
-#
-# Version: 1.1.0
-# Last Update: 2025-04-01
-# Author: Josh DeLaRosa
-#
-# Change Log:
-# 2025-04-01: v1.0.1 - Added validation for invalid or missing URLs to prevent
-#                       downstream processing errors and improve error reporting
-#                     - Implemented direct URL construction as fallback mechanism
-#                       when standard scraping cannot locate Excel file links
-#                     - Enhanced batch processing with better error handling
-#                     - Added seed consistency for parallel processing to ensure
-#                       reproducible results across executions
-# 2023-03-15: v1.0.0 - Initial release
-#
-# Usage: This script is called from main.R and should not be run directly.
+# Purpose: Apply configured filters to discovered tables and resolve each table
+#          page to a downloadable Excel URL.
+# Notes: This script is sourced by `main.R` after table discovery.
 
-# ---- Load Libraries ----
-suppressPackageStartupMessages({
-  library(rvest)      # For web scraping
-  library(dplyr)      # For data manipulation
-  library(purrr)      # For functional programming
-  library(furrr)      # For parallel processing
-  library(stringr)    # For string manipulation
-  library(tibble)     # For tibble data frames
-  library(xml2)       # For XML processing
-  library(glue)       # For string interpolation
-})
 
-#' Extract Excel Download Link and Full Title
+#' Extract Excel Link and Normalized Title
 #'
-#' Enhanced function to extract Excel links and full titles from table pages
-#' with comprehensive error handling and detailed logging.
+#' Resolves the first available Excel link and preferred table title for a
+#' single table row.
 #'
 #' @param row Data for a single table.
 #'
@@ -88,9 +61,11 @@ get_excel_link_from_page <- function(row) {
       url_table_subnum <- stringr::str_extract(page_url, "dt\\d+_(\\d+)\\.(\\d+)", group = 2)
       
       if (!is.na(url_table_num) && !is.na(url_table_subnum)) {
-        # Construct direct Excel URL
+        # Construct direct Excel URL — prefer .xlsx (NCES default since ~2018)
+        # The download function retries on failure, so if .xlsx is wrong the
+        # next attempt will surface the error clearly.
         constructed_url <- glue::glue(
-          "https://nces.ed.gov/programs/digest/{year}/tables/xls/tabn{url_table_num}{url_table_subnum}.xls"
+          "{NCES_BASE_URL}{year}/tables/xls/tabn{url_table_num}{url_table_subnum}.xlsx"
         )
         
         message(glue::glue("No Excel link found, trying constructed URL: {constructed_url}"))
@@ -178,10 +153,9 @@ get_excel_link_from_page <- function(row) {
 }
 
 #' Construct Direct Excel URL Without HTML Scraping
-#' 
-#' Creates a direct URL to an Excel file based on table information
-#' without requiring HTML scraping, serving as a fallback mechanism
-#' when normal scraping fails.
+#'
+#' Builds a direct Excel URL from table identifiers as a fallback when page
+#' scraping does not expose a link.
 #' 
 #' @param row A row from the tables dataframe containing year and table_number
 #' @return A string with the constructed Excel URL or NA if not possible
@@ -211,16 +185,10 @@ construct_direct_excel_url <- function(row) {
   main_num <- parts[1]
   sub_num <- parts[2]
   
-  # Construct URL
-  url <- paste0(
-    "https://nces.ed.gov/programs/digest/",
-    year,
-    "/tables/xls/tabn",
-    main_num,
-    sub_num,
-    ".xls"
-  )
-  
+  # Construct URL — prefer .xlsx (NCES default since ~2018).
+  # Uses NCES_BASE_URL from config.R.
+  url <- paste0(NCES_BASE_URL, year, "/tables/xls/tabn", main_num, sub_num, ".xlsx")
+
   return(url)
 }
 
