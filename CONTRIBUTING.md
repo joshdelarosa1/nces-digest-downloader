@@ -79,8 +79,48 @@ Report privately using guidance in `SECURITY.md`.
 
 ## Pre-commit and Style
 
-- Install hooks with `pre-commit install`.
-- Use `{styler}` conventions through the `style-files` pre-commit hook.
+The pre-commit configuration includes two R-specific hooks (`style-files` and `lintr`)
+provided by [`lorenzwalthert/precommit`](https://lorenzwalthert.github.io/precommit/).
+These require R packages to be installed **before** running `pre-commit install`,
+otherwise the hooks will silently fail or error on first commit.
+
+### Setup (one-time)
+
+1. Install the Python `pre-commit` tool:
+
+   ```bash
+   pip install pre-commit
+   # or: brew install pre-commit
+   ```
+
+2. Install the required R packages:
+
+   ```r
+   install.packages(c("precommit", "styler", "lintr"))
+   ```
+
+3. Register the R hook environment with pre-commit:
+
+   ```r
+   precommit::use_precommit()
+   ```
+
+   > If the repo already has a `.pre-commit-config.yaml` (it does), this step only
+   > installs the hook runner — it will not overwrite the existing config.
+
+4. Install the hooks:
+
+   ```bash
+   pre-commit install
+   ```
+
+After setup, hooks run automatically on `git commit`. To run them manually against
+all files:
+
+```bash
+pre-commit run --all-files
+```
+
 - Keep tests deterministic with `{testthat}` and avoid external-state dependencies.
 - Optional DCO sign-off is supported (`git commit -s`).
 
