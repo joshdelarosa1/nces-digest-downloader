@@ -2,18 +2,18 @@ version: "1.1.0"
 release_date: "2025-04-01"    # Changed to match the changelog header
 changelog: |
   [1.1.0] - 2025-04-01
-  - Added: 
+  - Added:
     - Full integration of parallel scraping and downloading using {furrr}
     - Page title enhancement logic for NCES Digest metadata (enhance_with_page_titles)
     - Robust hash-based integrity verification of downloaded Excel files
     - Extraction of document metadata from .xlsx files (e.g., author, created date)
     - Throttling logic to regulate HTTP request intervals and prevent server overload
-  - Improved: 
+  - Improved:
     - Enhanced error handling in all network operations (safe_read_html, download_excel_file)
     - Expanded retry logic using exponential backoff with jitter
     - Browser-like headers for better server compatibility with NCES sites
     - Modular logging system with timestamped log files and hash registry
-  - Security: 
+  - Security:
     - Added .github/SECURITY.md with responsible disclosure policy
     - Enabled GitHub Dependabot alerts and security updates
     - Validated all URL inputs and prevented NA/null scraping calls

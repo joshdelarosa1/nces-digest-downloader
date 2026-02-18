@@ -24,7 +24,7 @@ jobs:
           [ -f DESCRIPTION ] && echo "has_description=true" >> "$GITHUB_OUTPUT" || echo "has_description=false" >> "$GITHUB_OUTPUT"
           [ -f NAMESPACE ] && echo "has_namespace=true" >> "$GITHUB_OUTPUT" || echo "has_namespace=false" >> "$GITHUB_OUTPUT"
           ls Dockerfile* >/dev/null 2>&1 && echo "has_dockerfile=true" >> "$GITHUB_OUTPUT" || echo "has_dockerfile=false" >> "$GITHUB_OUTPUT"
-          if find . -type f \\( -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.go' -o -name '*.java' \\) | grep -q .; then
+          if find . -type f \( -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.go' -o -name '*.java' \) | grep -q .; then
             echo "has_non_r_code=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_non_r_code=false" >> "$GITHUB_OUTPUT"

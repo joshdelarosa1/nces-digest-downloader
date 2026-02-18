@@ -1,4 +1,5 @@
 # CHANGELOG
+# - 2026-02-18: Removed deleted metadata updater script from required source inputs.
 # - 2026-02-17: Added automated generation of docs/reference/index.md from source comments.
 # - 2026-02-17: Initial version.
 # ============================================================================
@@ -31,8 +32,7 @@ source_paths <- c(
   file.path("code", "find_excel_path.R"),
   file.path("code", "download_files.R"),
   "main.R",
-  "install_dependencies.R",
-  "update_project_metadata.R"
+  "install_dependencies.R"
 )
 
 # ---- Validate assumptions ---------------------------------------------------
