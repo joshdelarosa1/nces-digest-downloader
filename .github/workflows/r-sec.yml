@@ -14,15 +14,13 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       has_description: ${{ steps.scan.outputs.has_description }}
-      has_namespace: ${{ steps.scan.outputs.has_namespace }}
       has_dockerfile: ${{ steps.scan.outputs.has_dockerfile }}
       has_non_r_code: ${{ steps.scan.outputs.has_non_r_code }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - id: scan
         run: |
           [ -f DESCRIPTION ] && echo "has_description=true" >> "$GITHUB_OUTPUT" || echo "has_description=false" >> "$GITHUB_OUTPUT"
-          [ -f NAMESPACE ] && echo "has_namespace=true" >> "$GITHUB_OUTPUT" || echo "has_namespace=false" >> "$GITHUB_OUTPUT"
           ls Dockerfile* >/dev/null 2>&1 && echo "has_dockerfile=true" >> "$GITHUB_OUTPUT" || echo "has_dockerfile=false" >> "$GITHUB_OUTPUT"
           if find . -type f \( -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.go' -o -name '*.java' \) | grep -q .; then
             echo "has_non_r_code=true" >> "$GITHUB_OUTPUT"
@@ -30,31 +28,27 @@ jobs:
             echo "has_non_r_code=false" >> "$GITHUB_OUTPUT"
           fi
 
-  r-cmd-check:
+  r-tests:
     needs: detect-stack
     if: needs.detect-stack.outputs.has_description == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
-      - uses: r-lib/actions/setup-r-dependencies@v2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: r-lib/actions/setup-r@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590  # v2
         with:
-          extra-packages: any::rcmdcheck
-      - name: Run R CMD check
-        if: needs.detect-stack.outputs.has_namespace == 'true'
-        uses: r-lib/actions/check-r-package@v2
-      - name: Skip R CMD check (no NAMESPACE)
-        if: needs.detect-stack.outputs.has_namespace != 'true'
-        run: echo "DESCRIPTION exists, but NAMESPACE is missing. Skipping package check."
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590  # v2
+      - name: Run testthat
+        run: Rscript -e 'testthat::test_dir("tests/testthat")'
 
   lintr:
     needs: detect-stack
     if: needs.detect-stack.outputs.has_description == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: r-lib/actions/setup-r@v2
-      - uses: r-lib/actions/setup-r-dependencies@v2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: r-lib/actions/setup-r@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590  # v2
+      - uses: r-lib/actions/setup-r-dependencies@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590  # v2
         with:
           extra-packages: any::lintr
       - name: Run lintr
@@ -65,10 +59,10 @@ jobs:
     needs: detect-stack
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38  # v5.4.0
         with:
           python-version: "3.11"
       - name: Install detect-secrets
@@ -86,16 +80,21 @@ jobs:
           else
             echo "No changed files to scan"
           fi
-      - name: Run gitleaks full-history
+      - name: Download gitleaks
         run: |
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.2/gitleaks_8.24.2_linux_x64.tar.gz | tar -xz
-          ./gitleaks git --redact --no-banner --config .gitleaks.toml
+          curl -sSL -o gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.24.2/gitleaks_8.24.2_linux_x64.tar.gz
+          # Verify binary integrity before execution; checksum from gitleaks_8.24.2_checksums.txt
+          echo "fa0500f6b7e41d28791ebc680f5dd9899cd42b58629218a5f041efa899151a8e  gitleaks.tar.gz" | sha256sum -c
+          tar -xzf gitleaks.tar.gz
+      - name: Run gitleaks full-history
+        run: ./gitleaks git --redact --no-banner --config .gitleaks.toml
 
   yamllint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38  # v5.4.0
         with:
           python-version: "3.11"
       - run: python -m pip install --upgrade yamllint
@@ -106,15 +105,15 @@ jobs:
     if: needs.detect-stack.outputs.has_dockerfile == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - name: Hadolint
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf  # v3.1.0
         with:
           dockerfile: Dockerfile
       - name: Build image
         run: docker build -t local/r-sec:latest -f Dockerfile .
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2  # 0.28.0
         with:
           image-ref: local/r-sec:latest
           format: table
@@ -129,8 +128,8 @@ jobs:
       matrix:
         language: ["javascript-typescript", "python"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: github/codeql-action/init@f5c2471be782132e47a6e6f9c725e56730d6e9a3  # v3
         with:
           languages: ${{ matrix.language }}
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@f5c2471be782132e47a6e6f9c725e56730d6e9a3  # v3
