@@ -25,6 +25,7 @@ id_rsa*
 # Dependency caches and package managers
 renv/library/
 renv/staging/
+!renv/activate.R
 packrat/
 
 # Build/site artifacts
