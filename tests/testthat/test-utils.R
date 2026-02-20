@@ -68,3 +68,45 @@ test_that("calculate_file_hash returns NA and warns for missing file", {
   expect_warning(h <- calculate_file_hash("/no/such/path/file.txt"))
   expect_true(is.na(h))
 })
+
+# --------------------------------------------------------------------------- #
+# validate_excel_payload()                                                     #
+# --------------------------------------------------------------------------- #
+test_that("validate_excel_payload accepts legacy OLE signature for .xls", {
+  payload_path <- withr::local_tempfile(fileext = ".xls")
+  writeBin(
+    as.raw(c(0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1)),
+    payload_path
+  )
+
+  result <- validate_excel_payload(payload_path, expected_extension = "xls")
+
+  expect_true(result$is_valid)
+  expect_identical(result$detected_format, "xls")
+})
+
+test_that("validate_excel_payload accepts ZIP signature for mislabeled .xls", {
+  payload_path <- withr::local_tempfile(fileext = ".xls")
+  writeBin(
+    as.raw(c(0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00)),
+    payload_path
+  )
+
+  result <- validate_excel_payload(payload_path, expected_extension = ".xls")
+
+  expect_true(result$is_valid)
+  expect_identical(result$detected_format, "xlsx")
+})
+
+test_that("validate_excel_payload rejects non-Excel payload signatures", {
+  payload_path <- withr::local_tempfile(fileext = ".xls")
+  writeBin(
+    charToRaw("<!DOCTYPE html><html>"),
+    payload_path
+  )
+
+  result <- validate_excel_payload(payload_path, expected_extension = "xls")
+
+  expect_false(result$is_valid)
+  expect_identical(result$detected_format, "unknown")
+})

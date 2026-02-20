@@ -94,7 +94,7 @@ You can also pass a YAML config path where supported by your workflow.
 
 | Setting | Purpose | Default |
 |---|---|---|
-| `years` | Two-digit digest years to process | `c(22)` |
+| `years` | Two-digit digest years to process | `c(13,14,15)` |
 | `filter_mode` | `all`, `year_only`, `table_only`, `custom` | `year_only` |
 | `filter_years` | Year filters with `d` prefix | from `years` |
 | `filter_tables` | Specific table IDs | empty |
@@ -139,17 +139,22 @@ Rscript install_dependencies.R
 ### Unexpected HTML instead of Excel
 
 - The downloader validates content size and file signatures.
+- Some legacy NCES `.xls` URLs can return ZIP-based Excel payloads; these are
+  accepted when the file signature indicates a valid Excel container.
 - Check network restrictions and NCES availability.
 
 ## FAQ
 
 ### Does this project support offline data downloads?
+
 No. NCES data retrieval requires network access.
 
 ### Can documentation be built offline?
+
 Yes. After installing docs tooling once, docs generation/build checks run without network calls.
 
 ### Which changelog is canonical?
+
 `CHANGELOG.md` is canonical. `NEWS.md` is retained as legacy history.
 
 ## Documentation

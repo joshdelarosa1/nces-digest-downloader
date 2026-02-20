@@ -10,6 +10,7 @@ No high-confidence secrets were detected in tracked files.
 - `reports/secrets_scan.txt`: `critical_count=0`, `high_count=0`
 
 Notes:
+
 - `detect-secrets` and `gitleaks` were not installed locally during this run, so their local reports are placeholders.
 - CI workflows enforce both scanners with network-enabled runners.
 
@@ -18,9 +19,11 @@ Notes:
 No active high/critical code-risk patterns remain after remediation.
 
 Remediated in this patch:
+
 - Replaced shell-interpolated fallback command in `update_project_metadata.R:228` with `system2()` argument-safe invocation.
 
 Current medium findings:
+
 - `reports/code_scan.json`: style/lint-only findings.
 - `DESCRIPTION:1`: package check is intentionally skipped by local scanner when `NAMESPACE` is absent.
 
@@ -29,6 +32,7 @@ Current medium findings:
 No tracked files above 10MB were found in Git history tip.
 
 Suggested action:
+
 - Keep binary artifacts out of Git where possible.
 - Use Git LFS for large `.rds`, `.qs`, `.png`, `.pdf`, `.zip` assets when needed.
 
