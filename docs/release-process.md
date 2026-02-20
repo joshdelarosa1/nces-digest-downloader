@@ -19,9 +19,9 @@ mkdocs build --strict
 Rscript scripts/check_local_links.R README.md docs
 ```
 
-4. Create a signed release commit.
-5. Create a signed tag (`vX.Y.Z`).
-6. Publish release notes from `CHANGELOG.md`.
+1. Create a signed release commit.
+2. Create a signed tag (`vX.Y.Z`).
+3. Publish release notes from `CHANGELOG.md`.
 
 ## Suggested Conventional Commit Mapping
 

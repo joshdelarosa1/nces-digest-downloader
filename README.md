@@ -146,12 +146,15 @@ Rscript install_dependencies.R
 ## FAQ
 
 ### Does this project support offline data downloads?
+
 No. NCES data retrieval requires network access.
 
 ### Can documentation be built offline?
+
 Yes. After installing docs tooling once, docs generation/build checks run without network calls.
 
 ### Which changelog is canonical?
+
 `CHANGELOG.md` is canonical. `NEWS.md` is retained as legacy history.
 
 ## Documentation

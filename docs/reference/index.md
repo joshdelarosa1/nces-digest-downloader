@@ -444,4 +444,3 @@ Parameters:
 - `type`: Message type (`info`, `success`, `warn`, `error`).
 
 Returns: `NULL`.
-
