@@ -166,6 +166,16 @@ for (source_path in source_paths) {
 #   - Makes docs generation traceable in CI and local workflows.
 # Outputs:
 #   - Updated docs/reference/index.md file.
+# Normalize blank-line runs so markdownlint MD012 passes on generated output.
+blank_lines <- !nzchar(reference_lines)
+if (length(reference_lines) > 0) {
+  previous_blank <- c(FALSE, blank_lines[-length(blank_lines)])
+  reference_lines <- reference_lines[!(blank_lines & previous_blank)]
+  if (!nzchar(reference_lines[length(reference_lines)])) {
+    reference_lines <- reference_lines[-length(reference_lines)]
+  }
+}
+
 writeLines(reference_lines, reference_output_path)
 
 message(

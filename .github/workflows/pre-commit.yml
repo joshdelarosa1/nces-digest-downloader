@@ -24,4 +24,9 @@ jobs:
         run: |
           Rscript -e 'install.packages(c("precommit","lintr","styler"), repos = "https://cloud.r-project.org")'
       - name: Run hooks
+        env:
+          # R precommit hooks resolve dependencies in an isolated renv and can
+          # fail on runner toolchain mismatches; lintr/style are enforced in
+          # dedicated CI jobs.
+          SKIP: style-files,lintr
         run: pre-commit run --all-files --show-diff-on-failure
