@@ -26,7 +26,7 @@
 # ===== USER CONFIGURATION (EDIT THESE VALUES) =====
 
 # Years to download (e.g., 24 = 2024, 23 = 2023, etc.)
-YEARS_TO_DOWNLOAD <- c(25)
+YEARS_TO_DOWNLOAD <- c(13,14,15)
 
 # Download mode:
 # "all"        - Download all tables for the specified years

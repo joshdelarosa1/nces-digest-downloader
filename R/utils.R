@@ -144,6 +144,67 @@ calculate_file_hash <- function(file_path, algo = "md5") {
   })
 }
 
+#' Validate Excel Payload Magic Bytes
+#'
+#' Inspects file signatures to determine whether a downloaded payload is a valid
+#' Excel container for the expected extension.
+#'
+#' @param file_path Path to the downloaded file payload.
+#' @param expected_extension Optional extension hint (`xls`/`xlsx`), with or
+#'   without a leading dot.
+#'
+#' @return A named list containing validation status and detected signature
+#'   details.
+#'
+#' @export
+validate_excel_payload <- function(file_path, expected_extension = NULL) {
+  if (!file.exists(file_path)) {
+    stop(glue::glue("Cannot validate payload: file does not exist: {file_path}"))
+  }
+
+  signature_bytes <- readBin(file_path, what = "raw", n = 8L)
+
+  has_zip_signature <- length(signature_bytes) >= 2L &&
+    signature_bytes[1L] == as.raw(0x50) &&
+    signature_bytes[2L] == as.raw(0x4B)
+
+  has_ole_signature <- length(signature_bytes) >= 4L &&
+    signature_bytes[1L] == as.raw(0xD0) &&
+    signature_bytes[2L] == as.raw(0xCF) &&
+    signature_bytes[3L] == as.raw(0x11) &&
+    signature_bytes[4L] == as.raw(0xE0)
+
+  normalized_extension <- tolower(expected_extension %||% "")
+  normalized_extension <- sub("^\\.", "", normalized_extension)
+
+  detected_format <- if (has_ole_signature) {
+    "xls"
+  } else if (has_zip_signature) {
+    "xlsx"
+  } else {
+    "unknown"
+  }
+
+  is_valid <- switch(
+    normalized_extension,
+    xls = has_ole_signature || has_zip_signature,
+    xlsx = has_zip_signature,
+    has_ole_signature || has_zip_signature
+  )
+
+  signature_hex <- if (length(signature_bytes) == 0L) {
+    ""
+  } else {
+    paste(sprintf("%02X", as.integer(signature_bytes)), collapse = " ")
+  }
+
+  list(
+    is_valid = is_valid,
+    detected_format = detected_format,
+    signature_hex = signature_hex
+  )
+}
+
 #' Add Entry to Hash Registry
 #'
 #' Records file hash information in a cumulative CSV registry.

@@ -49,11 +49,19 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - uses: r-lib/actions/setup-r@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590  # v2
       - uses: r-lib/actions/setup-r-dependencies@6f6e5bc62fba3a704f74e7ad7ef7676c5c6a2590  # v2
-        with:
-          extra-packages: any::lintr
       - name: Run lintr
         run: |
-          Rscript -e 'paths <- unique(c(list.files(".", pattern="\\.R$", recursive=FALSE, full.names=TRUE), list.files("R", pattern="\\.R$", recursive=TRUE, full.names=TRUE), list.files("code", pattern="\\.R$", recursive=TRUE, full.names=TRUE), list.files("tests", pattern="\\.R$", recursive=TRUE, full.names=TRUE))); if (length(paths) == 0) { message("No R files found"); quit(status = 0) }; lint_out <- lintr::lint(paths); if (length(lint_out) > 0) print(lint_out)'
+          Rscript -e '
+            paths <- unique(c(
+              list.files(".", pattern="\\.R$", recursive=FALSE, full.names=TRUE),
+              list.files("R", pattern="\\.R$", recursive=TRUE, full.names=TRUE),
+              list.files("code", pattern="\\.R$", recursive=TRUE, full.names=TRUE),
+              list.files("tests", pattern="\\.R$", recursive=TRUE, full.names=TRUE)
+            ))
+            if (length(paths) == 0) { message("No R files found"); quit(status = 0) }
+            lint_out <- do.call(c, lapply(paths, lintr::lint))
+            if (length(lint_out) > 0) print(lint_out)
+          '
 
   secrets:
     needs: detect-stack

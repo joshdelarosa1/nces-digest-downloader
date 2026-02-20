@@ -61,7 +61,7 @@ load_config <- function(config_path = NULL, config_env = NULL) {
   config <- list(
     years = c(22),                    # Default to latest digest (2022)
     filter_mode = "year_only",        # Default filter mode
-    filter_years = c("d22"),          # Default filter years
+    filter_years = c("13"),          # Default filter years
     filter_tables = character(0),     # No default table filters
     max_parallel = 2,                 # Conservative default parallelism
     output_dir = "output",            # Default output directory

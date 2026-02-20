@@ -243,20 +243,17 @@ download_excel_file <- function(url, dest_path, min_size = 5000, max_retries = 5
         stop(glue::glue("Downloaded file too small ({file_size} bytes < {min_size} byte minimum). Likely an error page, not a valid Excel file."))
       }
 
-      # Magic-byte check: confirm the file is an Excel binary, not an HTML error page
-      file_ext  <- tolower(tools::file_ext(dest_path))
-      magic     <- readBin(temp_file, what = "raw", n = 4L)
-      valid_magic <- switch(file_ext,
-        xlsx = length(magic) >= 2L &&
-                 magic[1L] == as.raw(0x50) && magic[2L] == as.raw(0x4B),
-        xls  = length(magic) >= 4L &&
-                 magic[1L] == as.raw(0xD0) && magic[2L] == as.raw(0xCF) &&
-                 magic[3L] == as.raw(0x11) && magic[4L] == as.raw(0xE0),
-        TRUE  # unknown extension: let it through
+      # Magic-byte check: confirm the payload is an Excel container.
+      # Some NCES legacy `.xls` endpoints return ZIP-based workbooks.
+      file_ext <- tolower(tools::file_ext(dest_path))
+      payload_validation <- validate_excel_payload(
+        file_path = temp_file,
+        expected_extension = file_ext
       )
-      if (!valid_magic) {
+      if (!payload_validation$is_valid) {
         stop(glue::glue(
           "File failed magic-byte check for .{file_ext} format. ",
+          "Detected signature: {payload_validation$signature_hex}. ",
           "Likely an HTML error page masquerading as an Excel file."
         ))
       }
