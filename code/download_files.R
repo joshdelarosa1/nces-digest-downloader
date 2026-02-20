@@ -154,13 +154,13 @@ download_excel_file <- function(url, dest_path, min_size = 5000, max_retries = 5
   # Check if file already exists and handle according to overwrite parameter
   if (file.exists(dest_path) && !overwrite) {
     hash <- calculate_file_hash(dest_path)
-    
+
     # Register the hash if not already in registry
     registry_result <- check_hash_registry(dest_path, hash)
     if (!registry_result$exists) {
       register_file_hash(dest_path, hash)
     }
-    
+
     return(list(
       success = TRUE,
       file_path = dest_path,
@@ -168,22 +168,22 @@ download_excel_file <- function(url, dest_path, min_size = 5000, max_retries = 5
       status = "downloaded"
     ))
   }
-  
+
   # Ensure destination directory exists
   ensure_dir(dirname(dest_path))
-  
+
   # Verify URL has expected format for Excel file
   if (verify_extension && !grepl("\\.(xls|xlsx)($|\\?)", url, ignore.case = TRUE)) {
     warning(glue::glue("URL does not appear to be an Excel file: {url}"))
   }
-  
+
   # Set up temporary file for download
   temp_file <- tempfile(fileext = ".tmp")
   on.exit(if (file.exists(temp_file)) file.remove(temp_file), add = TRUE)
-  
+
   # Track the current retry delay for exponential backoff
   current_delay <- 1
-  
+
   # Attempt download with retries and exponential backoff
   for (attempt in seq_len(max_retries)) {
     tryCatch({
@@ -197,7 +197,7 @@ download_excel_file <- function(url, dest_path, min_size = 5000, max_retries = 5
         # Increase delay for next attempt (exponential backoff)
         current_delay <- min(current_delay * 2, 30)  # Cap at 30 seconds
       }
-      
+
       # Enhanced browser-like headers
       headers <- c(
         "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -205,7 +205,7 @@ download_excel_file <- function(url, dest_path, min_size = 5000, max_retries = 5
         "Accept-Language" = "en-US,en;q=0.5",
         "Connection" = "keep-alive"
       )
-      
+
       # Use httr for more control over the download process
       response <- httr::GET(
         url,
@@ -213,7 +213,7 @@ download_excel_file <- function(url, dest_path, min_size = 5000, max_retries = 5
         httr::timeout(60),
         httr::add_headers(.headers = headers)
       )
-      
+
       # Check if request was successful
       status_code <- httr::status_code(response)
       if (status_code != 200) {
@@ -231,12 +231,12 @@ download_excel_file <- function(url, dest_path, min_size = 5000, max_retries = 5
           stop(paste("HTTP error:", status_code))
         }
       }
-      
+
       # Verify download
       if (!file.exists(temp_file)) {
         stop("Download failed: File not created")
       }
-      
+
       # Check file size — guard against HTML error pages returned as 200 OK
       file_size <- file.info(temp_file)$size
       if (file_size < min_size) {
@@ -260,13 +260,13 @@ download_excel_file <- function(url, dest_path, min_size = 5000, max_retries = 5
 
       # Move file to destination
       file.copy(temp_file, dest_path, overwrite = TRUE)
-      
+
       # Calculate hash
       hash <- calculate_file_hash(dest_path)
-      
+
       # Register the hash
       register_file_hash(dest_path, hash)
-      
+
       return(list(
         success = TRUE,
         file_path = dest_path,
@@ -283,12 +283,12 @@ download_excel_file <- function(url, dest_path, min_size = 5000, max_retries = 5
           status = "failed"
         ))
       }
-      
+
       # Log error but continue to next retry
       message(glue::glue("Attempt {attempt}/{max_retries} failed: {e$message}"))
     })
   }
-  
+
   # This should never be reached due to the return() in the error handler
   return(list(
     success = FALSE,
@@ -320,26 +320,26 @@ extract_xml_properties <- function(file_path) {
   if (ext != "xlsx") {
     return(NA_XML_PROPS)
   }
-  
+
   # Use a temporary directory for extracting XML
   temp_dir <- fs::file_temp()
   fs::dir_create(temp_dir)
   on.exit(fs::dir_delete(temp_dir), add = TRUE)
-  
+
   # Try to unzip the core XML file containing metadata
   tryCatch({
     # Attempt to extract the core.xml file
     utils::unzip(file_path, files = "docProps/core.xml", exdir = temp_dir)
-    
+
     # Load XML document
     core_xml_path <- file.path(temp_dir, "docProps", "core.xml")
     if (!fs::file_exists(core_xml_path)) {
       return(NA_XML_PROPS)
     }
-    
+
     # Read XML content
     doc <- xml2::read_xml(core_xml_path)
-    
+
     # Define XML namespaces for proper extraction
     ns <- c(
       cp = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties",
@@ -348,18 +348,18 @@ extract_xml_properties <- function(file_path) {
       dcmitype = "http://purl.org/dc/dcmitype/",
       xsi = "http://www.w3.org/2001/XMLSchema-instance"
     )
-    
+
     # Extract metadata fields
     creator <- xml2::xml_text(xml2::xml_find_first(doc, ".//dc:creator", ns = ns))
     last_modified_by <- xml2::xml_text(xml2::xml_find_first(doc, ".//cp:lastModifiedBy", ns = ns))
     created <- xml2::xml_text(xml2::xml_find_first(doc, ".//dcterms:created", ns = ns))
     modified <- xml2::xml_text(xml2::xml_find_first(doc, ".//dcterms:modified", ns = ns))
     title <- xml2::xml_text(xml2::xml_find_first(doc, ".//dc:title", ns = ns))
-    
+
     # Return list with extracted properties
     return(list(
       creator = if (length(creator) > 0 && nzchar(creator)) creator else NA_character_,
-      last_modified_by = if (length(last_modified_by) > 0 && nzchar(last_modified_by)) 
+      last_modified_by = if (length(last_modified_by) > 0 && nzchar(last_modified_by))
         last_modified_by else NA_character_,
       created = if (length(created) > 0 && nzchar(created)) created else NA_character_,
       modified = if (length(modified) > 0 && nzchar(modified)) modified else NA_character_,
@@ -386,7 +386,7 @@ download_excel_file_with_reporting <- function(row_index, row, overwrite = FALSE
   table_number <- row$table_number
   excel_url <- row$excel_url
   table_title <- row$table_title
-  
+
   # Set up paths
   clean_table_number <- stringr::str_replace_all(table_number, "\\.", "_")
   subchapter <- stringr::str_extract(table_number, "^[0-9]{3}")
@@ -396,7 +396,7 @@ download_excel_file_with_reporting <- function(row_index, row, overwrite = FALSE
   file_name <- glue::glue("{year}_tabn{clean_table_number}.{ext}")
   sub_dir <- file.path(base_output_dir, year, paste0("chapter_", chapter_folder), paste0("subchapter_", subchapter))
   file_path <- file.path(sub_dir, file_name)
-  
+
   # Initialize log entry
   log_entry <- list(
     year = year,
@@ -412,32 +412,32 @@ download_excel_file_with_reporting <- function(row_index, row, overwrite = FALSE
     attempt_count = 1,
     download_duration = 0
   )
-  
+
   # Handle missing URL
   if (is.na(excel_url) || excel_url == "") {
     log_entry$processing_status <- "failed"
     log_entry$error_message <- "Missing or empty URL"
     return(as_tibble(log_entry))
   }
-  
+
   # Ensure directory exists and apply throttling
   ensure_dir(sub_dir)
   apply_throttling()
-  
+
   # Perform download
   download_start <- Sys.time()
   result <- download_excel_file(excel_url, file_path, min_size = min_file_size, overwrite = overwrite)
   download_end <- Sys.time()
   download_duration <- as.numeric(difftime(download_end, download_start, units = "secs"))
-  
+
   # Update log entry based on result
   if (result$success) {
     log_entry$checksum <- result$hash
     log_entry$download_duration <- download_duration
-    
+
     if (result$status == "downloaded") {
       log_entry$processing_status <- "success"
-      
+
       # Try to extract metadata
       tryCatch({
         # Basic file info
@@ -445,14 +445,14 @@ download_excel_file_with_reporting <- function(row_index, row, overwrite = FALSE
         log_entry$file_size <- file_info$size
         log_entry$creation_date <- if (!is.na(file_info$birth_time)) file_info$birth_time else file_info$modification_time
         log_entry$modification_date <- file_info$modification_time
-        
+
         # Excel metadata
         xml_props <- extract_xml_properties(file_path)
         log_entry$doc_created <- xml_props$created
         log_entry$doc_modified <- xml_props$modified
         log_entry$author <- xml_props$creator
         log_entry$last_modified_by <- xml_props$last_modified_by
-        
+
         # Try to get sheet count
         log_entry$number_of_sheets <- tryCatch({
           if (tolower(fs::path_ext(file_path)) == "xlsx") {
@@ -461,12 +461,12 @@ download_excel_file_with_reporting <- function(row_index, row, overwrite = FALSE
             NA_integer_
           }
         }, error = function(e) { NA_integer_ })
-        
+
       }, error = function(e) {
         # If metadata extraction fails, still keep success status
         log_entry$error_message <- paste("Metadata extraction failed:", e$message)
       })
-      
+
     } else {
       log_entry$processing_status <- "skipped"
       log_entry$error_message <- "File already exists"
@@ -477,10 +477,10 @@ download_excel_file_with_reporting <- function(row_index, row, overwrite = FALSE
     log_entry$download_duration <- download_duration
     adjust_throttling(FALSE)
   }
-  
+
   # Print debugging info
   message(paste("Final status for", basename(file_path), ":", log_entry$processing_status))
-  
+
   return(as_tibble(log_entry))
 }
 

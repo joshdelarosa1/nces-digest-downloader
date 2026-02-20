@@ -26,7 +26,7 @@
 #' @examples
 #' # Basic usage
 #' html <- safe_read_html("https://nces.ed.gov/programs/digest/d24/tables/dt24_101.10.asp")
-#' 
+#'
 #' # With custom parameters
 #' html <- safe_read_html(
 #'   "https://nces.ed.gov/programs/digest/d24/tables/dt24_101.10.asp",
@@ -47,16 +47,16 @@ safe_read_html <- function(url,
     message("Invalid URL provided: NA or empty string")
     return(NULL)
   }
-  
+
   delay <- initial_delay
-  
+
   # Updated headers: force uncompressed content and proper Accept header
   headers <- c(
     "User-Agent" = user_agent,
     "Accept" = "text/html,application/xhtml+xml,application/xml",
     "Accept-Encoding" = "identity"
   )
-  
+
   for (attempt in seq_len(max_retries)) {
     tryCatch({
       response <- httr::GET(
@@ -64,7 +64,7 @@ safe_read_html <- function(url,
         httr::add_headers(.headers = headers),
         httr::timeout(30)
       )
-      
+
       # Check if request was successful
       if (httr::status_code(response) == 200) {
         # Use ISO-8859-1 encoding per the page's meta tag
@@ -82,19 +82,19 @@ safe_read_html <- function(url,
         message(glue::glue("Failed to read HTML from {url} after {max_retries} attempts: {e$message}"))
         return(NULL)
       }
-      
+
       # Calculate backoff delay with jitter to prevent thundering herd
       jitter <- runif(1, min = 0, max = 0.5 * delay)
       actual_delay <- min(delay + jitter, max_delay)
-      
+
       message(glue::glue("Attempt {attempt}/{max_retries} for URL {url} failed: {e$message}"))
       message(glue::glue("Retrying in {round(actual_delay, 1)} seconds..."))
-      
+
       Sys.sleep(actual_delay)
       delay <- min(delay * 2, max_delay)  # Exponential backoff
     })
   }
-  
+
   return(NULL)  # If all attempts failed
 }
 
@@ -135,7 +135,7 @@ calculate_file_hash <- function(file_path, algo = "md5") {
     warning(glue::glue("File not found: {file_path}"))
     return(NA_character_)
   }
-  
+
   tryCatch({
     digest::digest(file = file_path, algo = algo)
   }, error = function(e) {
@@ -220,7 +220,7 @@ validate_excel_payload <- function(file_path, expected_extension = NULL) {
 register_file_hash <- function(file_path, hash, download_date = Sys.Date(),
                                registry_path = file.path(config$log_dir, "hash_registry.csv")) {
   if (is.na(hash)) return(FALSE)
-  
+
   # Create a new entry
   new_entry <- data.frame(
     file_path = file_path,
@@ -228,7 +228,7 @@ register_file_hash <- function(file_path, hash, download_date = Sys.Date(),
     download_date = as.character(download_date),
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   )
-  
+
   # If registry exists, append; otherwise create new
   if (file.exists(registry_path)) {
     # Read existing registry
@@ -238,13 +238,13 @@ register_file_hash <- function(file_path, hash, download_date = Sys.Date(),
       # If reading fails, create a new registry
       new_entry
     })
-    
+
     # Append new entry
     registry <- rbind(registry, new_entry)
   } else {
     registry <- new_entry
   }
-  
+
   # Write back to file
   tryCatch({
     utils::write.csv(registry, registry_path, row.names = FALSE)

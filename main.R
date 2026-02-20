@@ -68,11 +68,11 @@ VERBOSE <- FALSE
 #' @return `NULL`; updates global config variables by side effect.
 parse_command_line_args <- function() {
   args <- commandArgs(trailingOnly = TRUE)
-  
+
   if (length(args) == 0) {
     return()  # No args, use defaults
   }
-  
+
   if ("--help" %in% args) {
     cat("NCES Digest Data Downloader\n")
     cat("Usage: Rscript main.R [options]\n\n")
@@ -88,7 +88,7 @@ parse_command_line_args <- function() {
     cat("  --help                   Show this help message\n")
     quit(status = 0)
   }
-  
+
   # Extract arg values
   extract_arg_value <- function(flag, default = NULL) {
     idx <- which(args == flag)
@@ -97,44 +97,44 @@ parse_command_line_args <- function() {
     }
     return(default)
   }
-  
+
   # Process years
   years_arg <- extract_arg_value("--years")
   if (!is.null(years_arg)) {
     YEARS_TO_DOWNLOAD <<- as.numeric(strsplit(years_arg, ",")[[1]])
     FILTER_YEARS <<- paste0("d", YEARS_TO_DOWNLOAD)
   }
-  
+
   # Process mode
   mode_arg <- extract_arg_value("--mode")
   if (!is.null(mode_arg)) {
     DOWNLOAD_MODE <<- mode_arg
   }
-  
+
   # Process tables
   tables_arg <- extract_arg_value("--tables")
   if (!is.null(tables_arg)) {
     FILTER_TABLES <<- strsplit(tables_arg, ",")[[1]]
   }
-  
+
   # Process parallel
   parallel_arg <- extract_arg_value("--parallel")
   if (!is.null(parallel_arg)) {
     MAX_PARALLEL_DOWNLOADS <<- as.numeric(parallel_arg)
   }
-  
+
   # Process output directory
   output_arg <- extract_arg_value("--output")
   if (!is.null(output_arg)) {
     OUTPUT_DIR <<- output_arg
   }
-  
+
   # Process resume flag
   resume_arg <- extract_arg_value("--resume")
   if (!is.null(resume_arg)) {
     RESUME_PREVIOUS <<- tolower(resume_arg) %in% c("yes", "true", "1")
   }
-  
+
   # Process verbose flag
   verbose_arg <- extract_arg_value("--verbose")
   if (!is.null(verbose_arg)) {
@@ -180,7 +180,7 @@ msg <- function(text, type = "info") {
                    "error" = "❌ ",
                    "progress" = "🔄 ",
                    "")
-  
+
   cat(paste0(prefix, text, "\n"))
 }
 
@@ -190,15 +190,15 @@ msg <- function(text, type = "info") {
 #' @return `NULL`; throws on unresolved package dependencies.
 check_packages <- function(packages) {
   new_packages <- packages[!sapply(packages, requireNamespace, quietly = TRUE)]
-  
+
   if (length(new_packages) > 0) {
     msg(paste0("Missing required packages: ", paste(new_packages, collapse=", ")), "warn")
-    
+
     install <- readline(prompt = "Would you like to install them now? (y/n): ")
     if (tolower(install) == "y") {
       msg("Installing required packages...", "info")
       install.packages(new_packages)
-      
+
       # Verify installation
       still_missing <- new_packages[!sapply(new_packages, requireNamespace, quietly = TRUE)]
       if (length(still_missing) > 0) {
@@ -212,12 +212,12 @@ check_packages <- function(packages) {
       stop("Required packages are missing. Please install them to continue.")
     }
   }
-  
+
   # Load the packages
   lapply(packages, function(pkg) {
     suppressPackageStartupMessages(library(pkg, character.only = TRUE))
   })
-  
+
   if (config$verbose) {
     msg(paste0("Loaded ", length(packages), " required packages."), "success")
   }
@@ -250,13 +250,13 @@ find_script_path <- function(script_name) {
     file.path("R", script_name),
     file.path("scripts", script_name)
   )
-  
+
   for (path in possible_paths) {
     if (file.exists(path)) {
       return(path)
     }
   }
-  
+
   # Use the first path as a fallback
   return(possible_paths[1])
 }
@@ -270,76 +270,76 @@ main <- function() {
   cat("┌─────────────────────────────────────────────────┐\n")
   cat("│          NCES DIGEST DATA DOWNLOADER            │\n")
   cat("└─────────────────────────────────────────────────┘\n\n")
-  
+
   # Check required packages - removing progressr from the list
   required_packages <- c("httr", "rvest", "dplyr", "stringr", "purrr",
                          "tibble", "glue", "furrr", "fs", "digest",
                          "future", "yaml", "xml2", "progressr")
-  
+
   msg("Checking required packages...", "info")
   check_packages(required_packages)
-  
+
   # Setup directories
   msg("Setting up directories...", "info")
   setup_directories()
-  
+
   # Load utility functions
   utils_path <- find_script_path("utils.R")
   if (!file.exists(utils_path)) {
     stop("Could not find utils.R. Please ensure it exists in the project directory or in the R/ subfolder.")
   }
-  
+
   msg("Loading utility functions...", "info")
   source(utils_path)
-  
+
   # Load config.R to create config_env for compatibility
   config_path <- find_script_path("config.R")
   if (file.exists(config_path)) {
     source(config_path)
-    
+
     # Create config_env for compatibility with older scripts
     config_env <- new.env()
     for (name in names(config)) {
       assign(name, config[[name]], envir = config_env)
     }
-    
+
     # Make config_env available globally
     assign("config_env", config_env, envir = .GlobalEnv)
   }
-  
+
   # Display configuration summary
   msg("Configuration summary:", "info")
   cat(paste0("  Years to process: ", paste(config$years, collapse=", "), "\n"))
   cat(paste0("  Filter mode: ", config$filter_mode, "\n"))
-  
+
   if (config$filter_mode %in% c("year_only", "custom") && length(config$filter_years) > 0) {
     cat(paste0("  Filtering for years: ", paste(config$filter_years, collapse=", "), "\n"))
   }
-  
+
   if (config$filter_mode %in% c("table_only", "custom") && length(config$filter_tables) > 0) {
     cat(paste0("  Filtering for tables: ", paste(config$filter_tables, collapse=", "), "\n"))
   }
-  
+
   # Determine optimal parallel processes
   if (config$max_parallel <= 0) {
     # Auto-detect: use available cores minus 1, minimum 1
     config$max_parallel <- max(1, parallel::detectCores() - 1)
   }
   msg(paste0("Using ", config$max_parallel, " parallel processes for downloads"), "info")
-  
+
   # Set up parallel backend; ensure workers are released when main() exits.
   future::plan(future::multisession, workers = config$max_parallel, .options = furrr::furrr_options(seed = TRUE))
   on.exit(future::plan(future::sequential), add = TRUE)
-  
+
   # Step 1: Scrape the digest menu to find tables
   msg("Step 1/3: Scraping digest menus for available tables...", "progress")
   url_digest_path <- find_script_path("URL_DIGEST.R")
   if (!file.exists(url_digest_path)) {
     stop("Could not find URL_DIGEST.R script.")
   }
-  
+
   source(url_digest_path)  # This creates all_tables
-  
+
   # Step 2: Extract Excel file links
   msg("Step 2/3: Extracting Excel file links from table pages...", "progress")
   find_excel_path <- find_script_path("find_excel_path.R")
@@ -347,7 +347,7 @@ main <- function() {
     stop("Could not find find_excel_path.R script.")
   }
   source(find_excel_path)  # This creates excel_links_df
-  
+
   # Step 3: Download Excel files
   msg("Step 3/3: Downloading Excel files...", "progress")
   download_files_path <- find_script_path("download_files.R")
@@ -356,41 +356,41 @@ main <- function() {
   }
   # Minimal change: source download_files.R in the global environment
   source(download_files_path, local = .GlobalEnv)  # This creates download_log and required functions
-  
+
   # PATCHED CODE BELOW - Fixed download counter
   # Calculate and display summary statistics
   end_time <- Sys.time()
   duration <- difftime(end_time, start_time, units = "mins")
-  
+
   # Print summary
   cat("\n")
   msg(paste0("Download process completed in ", round(as.numeric(duration), 2), " minutes"), "success")
-  
+
   # Extract counts from download_log
   if (exists("download_log")) {
     # Fix: Count only files that were actually downloaded in this session
     success_count <- sum(download_log$processing_status == "success", na.rm = TRUE)
-    
+
     # These counts remain unchanged
     fail_count <- sum(download_log$processing_status == "failed", na.rm = TRUE)
     skip_count <- sum(download_log$processing_status == "skipped", na.rm = TRUE)
-    
-    msg(paste0("Downloaded files: ", success_count, " successful, ", 
+
+    msg(paste0("Downloaded files: ", success_count, " successful, ",
                fail_count, " failed, ", skip_count, " skipped"), "info")
-    
+
     # Show file sizes if available
     if ("file_size" %in% names(download_log)) {
       # Only sum sizes for newly downloaded files
       # Simplified total file size calculation
-      total_size_mb <- sum(download_log$file_size[download_log$processing_status == "success"], 
+      total_size_mb <- sum(download_log$file_size[download_log$processing_status == "success"],
                            na.rm = TRUE) / (1024 * 1024)
-      
+
       msg(paste0("Total data downloaded: ", round(total_size_mb, 2), " MB"), "info")
     }
   }
-  
+
   cat("\nResults are available in the '", config$output_dir, "' directory\n", sep="")
-  
+
   # In RStudio, suggest opening the results folder
   if (is_rstudio) {
     cat("To view downloaded files in RStudio:\n")
